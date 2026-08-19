@@ -56,6 +56,14 @@ async function captureScreenshots() {
             await page.screenshot({ path: path.join(OUT, 'intro.png') });
             console.log('Captured: screenshots/intro.png');
 
+            // 1b. Pattern Library (level select) from the intro
+            await page.click('#levels-intro-btn');
+            await page.waitForTimeout(400);
+            await page.screenshot({ path: path.join(OUT, 'library.png') });
+            console.log('Captured: screenshots/library.png');
+            await page.click('#levels-close-btn');
+            await page.waitForTimeout(300);
+
             // 2. Gameplay — start, then make a few moves so the loom looks alive
             await page.click('#start-btn');
             await page.waitForTimeout(400);

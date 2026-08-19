@@ -7,6 +7,9 @@ A meditative puzzle of warp, weft and color. Find the hidden repeat and weave th
 ![Intro Screen](screenshots/intro.png)
 *The welcome screen: tap threads, colors blend, match the sample.*
 
+![Pattern Library](screenshots/library.png)
+*The Pattern Library: browse every level, see previews, stars and best stats.*
+
 ![Main Game Loop](screenshots/gameplay.png)
 *The loom: dye the warp and weft threads, tune the repeat, and watch the cloth change.*
 
@@ -27,16 +30,18 @@ It's a genuine 2D constraint puzzle that quietly teaches the "see the repeat" in
 - **Tap the cloth** — clicking a cloth cell changes the warp thread running through it (<kbd>Shift</kbd>-click changes the weft).
 - **Set the repeat** — use the warp/weft repeat steppers to change how many distinct threads run through the loom.
 - **Hover a thread** to see exactly which cloth cells it passes through.
+- **Browse patterns** — open the Pattern Library (▦ in the header, or "Browse patterns" on the start screen) to see previews, your stars and best stats, and jump to any unlocked level.
 - **Match 100%** of the sample to win.
 
 ## Features
 
 - **Hand-tuned difficulty curve** — 10 named patterns (Tabby → Jacquard) with growing repeats and dye counts, then endless mode.
-- **Star scoring** — finish under par moves for ★★★; best stars are saved per level.
+- **Pattern Library** — browse all levels from the intro or the ▦ button: live cloth previews, lock/unlock progression, earned stars, and best time/moves per level. Jump straight to any unlocked pattern.
+- **Star scoring** — finish under par moves for ★★★; best stars, times and move counts are saved per level.
 - **Hints** — 3 per level; a hint names the exact thread and dye to try, and lights the crossing.
 - **Undo** — full history, including repeat changes (<kbd>Z</kbd>).
 - **Timer & move counter** in the HUD.
-- **Progress saving** — level, sound preference and best stars persist in `localStorage`.
+- **Progress saving** — level, sound preference and best stats persist in `localStorage`.
 - **Polish** — woven cloth texture, wooden loom frame, thread-scrap confetti, gentle WebAudio chimes, keyboard shortcuts, reduced-motion support.
 
 ## Controls
@@ -47,6 +52,7 @@ It's a genuine 2D constraint puzzle that quietly teaches the "see the repeat" in
 | Cycle dye backward | <kbd>Shift</kbd> + click |
 | Undo | <kbd>Z</kbd> or Undo button |
 | Hint | <kbd>H</kbd> or Hint button |
+| Pattern Library | ▦ button (header) or "Browse patterns" |
 | Sound on/off | 🔊 button |
 
 ## Run It

@@ -32,6 +32,7 @@
             </div>
             <div class="chip" id="moves-chip" title="Moves used">Moves 0</div>
             <div class="chip" id="time-chip" title="Time on this pattern">0:00</div>
+            <button class="icon-btn" id="levels-btn" aria-label="Pattern library" title="Pattern library">▦</button>
             <button class="icon-btn" id="sound-btn" aria-label="Toggle sound">🔊</button>
             <button class="icon-btn" id="help-btn" aria-label="How to play">?</button>
         </div>
@@ -134,7 +135,10 @@
                 </div>
             </div>
             <p class="fineprint">Fewer moves earn more stars. <kbd>Shift</kbd>-tap a thread to cycle backward.</p>
-            <button id="start-btn" class="btn primary big">Start weaving</button>
+            <div class="modal-actions">
+                <button id="levels-intro-btn" class="btn ghost">Browse patterns</button>
+                <button id="start-btn" class="btn primary big">Start weaving</button>
+            </div>
         </div>
     </div>
 
@@ -151,6 +155,18 @@
                 <button id="replay-btn" class="btn ghost">Weave again</button>
                 <button id="next-level-btn" class="btn primary">Next pattern →</button>
             </div>
+        </div>
+    </div>
+
+    <div id="levels-overlay" class="overlay" hidden>
+        <div class="modal levels-modal">
+            <div class="levels-head">
+                <h2>Pattern Library</h2>
+                <span id="levels-summary" class="levels-summary">0 ★ collected</span>
+                <button id="levels-close-btn" class="icon-btn" aria-label="Close pattern library">✕</button>
+            </div>
+            <p class="levels-sub">Pick any unlocked pattern to weave. Stars and best times are saved.</p>
+            <div id="levels-grid" class="levels-grid"></div>
         </div>
     </div>
 

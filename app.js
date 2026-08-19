@@ -14,7 +14,8 @@ const MIN_REPEAT = 1;
 const MAX_REPEAT = 8;
 const HINTS_PER_LEVEL = 3;
 const UNDO_CAP = 200;
-const SAVE_KEY = 'loom.save.v2';
+const SAVE_KEY = 'loom.save.v3';
+const SAVE_KEY_LEGACY = 'loom.save.v2';
 
 const DYES = [
     { name: 'Indigo', hex: '#3D5A80' },
@@ -60,6 +61,7 @@ const state = {
     hintsLeft: HINTS_PER_LEVEL,
     revealed: false,
     hasWon: false,
+    variation: 0,
     startTime: null,
     timerId: null,
     undoStack: [],
@@ -109,55 +111,91 @@ function dyeNameOf(hex) {
 
 function levelSpec(n) {
     if (n <= LEVELS.length) return { ...LEVELS[n - 1] };
-    const w = 3 + Math.floor(Math.random() * 2);
-    const h = 3 + Math.floor(Math.random() * 2);
+    // Deterministic for endless levels so previews/stats are stable.
+    const rng = mulberry32((n * 40503) >>> 0);
+    const w = 3 + Math.floor(rng() * 2);
+    const h = 3 + Math.floor(rng() * 2);
     return { w, h, dyes: 5, name: ENDLESS_NAMES[(n - 1) % ENDLESS_NAMES.length] };
 }
 
-function randomSeq(len, dyeCount) {
-    return Array.from({ length: len }, () => DYES[Math.floor(Math.random() * dyeCount)].hex);
+// Deterministic PRNG (mulberry32) so a given level + seed always yields the
+// same pattern. This lets the level-select screen show real previews and
+// keeps stats tied to a stable puzzle.
+function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function levelSeed(n, variation) {
+    // Stable per level; variation (Shuffle) offsets it.
+    return (n * 2654435761 + variation * 97) >>> 0;
+}
+
+function randomSeq(len, dyeCount, rng) {
+    return Array.from({ length: len }, () => DYES[Math.floor(rng() * dyeCount)].hex);
 }
 
 function distinctCount(colors) {
     return new Set(colors).size;
 }
 
-function generateLevel(n) {
+// Pure: compute the hidden solution + target cloth for a level, without
+// touching game state. Deterministic per (level, variation). Used both by
+// generateLevel() and by the level-select previews.
+function solveLevel(n, variation = 0) {
     const spec = levelSpec(n);
+    const rng = mulberry32(levelSeed(n, variation));
+
+    let warp = null;
+    let weft = null;
+    // Reroll until the cloth is non-trivial (at least 3 visible shades,
+    // and the thread sequences themselves aren't monochrome).
+    for (let attempt = 0; attempt < 40; attempt++) {
+        const w = randomSeq(spec.w, spec.dyes, rng);
+        const f = randomSeq(spec.h, spec.dyes, rng);
+        const shades = new Set();
+        for (let y = 0; y < spec.h; y++) {
+            for (let x = 0; x < spec.w; x++) shades.add(mix(w[x], f[y]));
+        }
+        const interesting = shades.size >= Math.min(3, spec.w * spec.h) &&
+            (spec.w === 1 || distinctCount(w) >= 2 || distinctCount(f) >= 2);
+        if (interesting || attempt === 39) {
+            warp = w;
+            weft = f;
+            break;
+        }
+    }
+
+    const target = Array.from({ length: ROWS }, (_, y) =>
+        Array.from({ length: COLS }, (_, x) =>
+            mix(warp[x % spec.w], weft[y % spec.h])
+        )
+    );
+
+    return { spec, warp, weft, target };
+}
+
+function generateLevel(n, variation = 0) {
+    const solved = solveLevel(n, variation);
     state.level = n;
-    state.name = spec.name;
-    state.solW = spec.w;
-    state.solH = spec.h;
+    state.variation = variation;
+    state.name = solved.spec.name;
+    state.solW = solved.spec.w;
+    state.solH = solved.spec.h;
+    state.solutionWarp = solved.warp;
+    state.solutionWeft = solved.weft;
+    state.target = solved.target;
     state.revealed = false;
     state.hasWon = false;
     state.moves = 0;
     state.hintsLeft = HINTS_PER_LEVEL;
     state.undoStack = [];
     resetTimer();
-
-    // Reroll until the cloth is non-trivial (at least 3 visible shades,
-    // and the thread sequences themselves aren't monochrome).
-    for (let attempt = 0; attempt < 40; attempt++) {
-        const warp = randomSeq(spec.w, spec.dyes);
-        const weft = randomSeq(spec.h, spec.dyes);
-        const shades = new Set();
-        for (let y = 0; y < spec.h; y++) {
-            for (let x = 0; x < spec.w; x++) shades.add(mix(warp[x], weft[y]));
-        }
-        const interesting = shades.size >= Math.min(3, spec.w * spec.h) &&
-            (spec.w === 1 || distinctCount(warp) >= 2 || distinctCount(weft) >= 2);
-        if (interesting || attempt === 39) {
-            state.solutionWarp = warp;
-            state.solutionWeft = weft;
-            break;
-        }
-    }
-
-    state.target = Array.from({ length: ROWS }, (_, y) =>
-        Array.from({ length: COLS }, (_, x) =>
-            mix(state.solutionWarp[x % state.solW], state.solutionWeft[y % state.solH])
-        )
-    );
 
     // Player starts on a blank cream loom with a 1×1 repeat.
     state.W = 1;
@@ -487,11 +525,19 @@ function starsFor(moves, par) {
 function triggerWin() {
     const par = parMoves();
     const stars = state.revealed ? 0 : starsFor(state.moves, par);
-    const time = state.startTime ? fmtTime(Date.now() - state.startTime) : '0:00';
+    const elapsedMs = state.startTime ? Date.now() - state.startTime : 0;
+    const time = state.startTime ? fmtTime(elapsedMs) : '0:00';
 
     if (!state.revealed) {
-        const prev = state.best[state.level] || 0;
-        if (stars > prev) state.best[state.level] = stars;
+        // Only record stats for the canonical (un-shuffled) pattern so
+        // times/moves stay comparable across plays of the same level.
+        if (state.variation === 0) {
+            const prev = state.best[state.level];
+            const prevStars = prev ? prev.stars : 0;
+            if (stars > prevStars) {
+                state.best[state.level] = { stars, time, moves: state.moves, ms: elapsedMs };
+            }
+        }
         saveGame();
         startConfetti();
         winChime();
@@ -633,13 +679,122 @@ function saveGame() {
 
 function loadGame() {
     try {
-        const raw = localStorage.getItem(SAVE_KEY);
+        let raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) {
+            // Migrate legacy save (best was a plain star count per level).
+            const legacy = localStorage.getItem(SAVE_KEY_LEGACY);
+            if (legacy) {
+                const old = JSON.parse(legacy);
+                const migratedBest = {};
+                for (const [lvl, val] of Object.entries(old.best || {})) {
+                    migratedBest[lvl] = { stars: Number(val) || 0, time: '—', moves: null, ms: null };
+                }
+                const migrated = { level: old.level, sound: old.sound, best: migratedBest };
+                localStorage.setItem(SAVE_KEY, JSON.stringify(migrated));
+                raw = JSON.stringify(migrated);
+            }
+        }
         if (!raw) return;
         const data = JSON.parse(raw);
         if (Number.isInteger(data.level) && data.level >= 1) state.level = data.level;
         if (typeof data.sound === 'boolean') state.sound = data.sound;
         if (data.best && typeof data.best === 'object') state.best = data.best;
     } catch (e) { /* fresh start */ }
+}
+
+function bestStarsFor(level) {
+    const b = state.best[level];
+    return b ? (b.stars || 0) : 0;
+}
+
+// ---------- Level select (Pattern Library) ----------
+
+// How many level cards to show. Includes the 10 hand-tuned levels plus a
+// handful of endless ones so the library feels alive.
+const LIBRARY_COUNT = 16;
+
+function renderLevelSelect() {
+    const grid = el.levelsGrid;
+    grid.innerHTML = '';
+
+    for (let n = 1; n <= LIBRARY_COUNT; n++) {
+        const solved = solveLevel(n, 0);
+        const best = state.best[n];
+        const stars = best ? (best.stars || 0) : 0;
+        const unlocked = n === 1 || bestStarsFor(n - 1) > 0 || n <= state.level;
+
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'level-card' + (unlocked ? '' : ' locked');
+        card.dataset.level = String(n);
+        card.disabled = !unlocked;
+
+        // Mini preview of the target cloth (downsampled to a small grid).
+        const preview = document.createElement('div');
+        preview.className = 'level-preview';
+        const PREVIEW_COLS = 6;
+        const PREVIEW_ROWS = 5;
+        preview.style.gridTemplateColumns = `repeat(${PREVIEW_COLS}, 1fr)`;
+        for (let py = 0; py < PREVIEW_ROWS; py++) {
+            for (let px = 0; px < PREVIEW_COLS; px++) {
+                const sx = Math.floor(px * COLS / PREVIEW_COLS);
+                const sy = Math.floor(py * ROWS / PREVIEW_ROWS);
+                const cell = document.createElement('div');
+                cell.className = 'preview-cell';
+                cell.style.backgroundColor = solved.target[sy][sx];
+                preview.appendChild(cell);
+            }
+        }
+        card.appendChild(preview);
+
+        const meta = document.createElement('div');
+        meta.className = 'level-meta';
+
+        const num = document.createElement('span');
+        num.className = 'level-num';
+        num.textContent = unlocked ? String(n) : '🔒';
+        meta.appendChild(num);
+
+        const name = document.createElement('span');
+        name.className = 'level-name';
+        name.textContent = solved.spec.name;
+        meta.appendChild(name);
+
+        const starRow = document.createElement('span');
+        starRow.className = 'level-stars';
+        starRow.setAttribute('aria-label', stars ? `${stars} of 3 stars` : 'Not completed');
+        for (let i = 0; i < 3; i++) {
+            const s = document.createElement('i');
+            s.className = 'mini-star' + (i < stars ? ' on' : '');
+            s.textContent = '★';
+            starRow.appendChild(s);
+        }
+        meta.appendChild(starRow);
+
+        if (best && best.time && best.time !== '—') {
+            const stat = document.createElement('span');
+            stat.className = 'level-stat';
+            stat.textContent = `${best.time} · ${best.moves} moves`;
+            meta.appendChild(stat);
+        }
+
+        card.appendChild(meta);
+        grid.appendChild(card);
+    }
+
+    // Summary line: total stars earned.
+    let totalStars = 0;
+    for (const b of Object.values(state.best)) totalStars += (b.stars || 0);
+    el.levelsSummary.textContent = `${totalStars} ★ collected`;
+}
+
+function openLevelSelect() {
+    renderLevelSelect();
+    el.levelsOverlay.hidden = false;
+}
+
+function closeLevelSelect() {
+    el.levelsOverlay.hidden = true;
 }
 
 // ---------- Wiring ----------
@@ -663,7 +818,8 @@ function wireControls() {
     el.shuffleBtn.addEventListener('click', () => {
         stopConfetti();
         el.winOverlay.hidden = true;
-        generateLevel(state.level);
+        // Deterministic levels need a variation offset to get fresh colors.
+        generateLevel(state.level, state.variation + 1);
         toast('Fresh dyes, same pattern. Good luck!');
     });
     el.revealBtn.addEventListener('click', () => {
@@ -685,6 +841,20 @@ function wireControls() {
         el.startBtn.textContent = 'Back to the loom';
         el.introOverlay.hidden = false;
     });
+    el.levelsBtn.addEventListener('click', openLevelSelect);
+    el.levelsIntroBtn.addEventListener('click', openLevelSelect);
+    el.levelsCloseBtn.addEventListener('click', closeLevelSelect);
+    el.levelsGrid.addEventListener('click', (event) => {
+        const card = event.target.closest('.level-card');
+        if (!card || card.disabled) return;
+        const n = Number(card.dataset.level);
+        closeLevelSelect();
+        el.introOverlay.hidden = true;
+        el.winOverlay.hidden = true;
+        stopConfetti();
+        generateLevel(n, 0);
+        blip(440, 0.08, 'sine', 0.04);
+    });
     el.soundBtn.addEventListener('click', () => {
         state.sound = !state.sound;
         el.soundBtn.textContent = state.sound ? '🔊' : '🔇';
@@ -705,7 +875,7 @@ function wireControls() {
     });
 
     window.addEventListener('keydown', (e) => {
-        if (!el.introOverlay.hidden || !el.winOverlay.hidden) return;
+        if (!el.introOverlay.hidden || !el.winOverlay.hidden || !el.levelsOverlay.hidden) return;
         if (e.key === 'z' || e.key === 'Z') undo();
         if (e.key === 'h' || e.key === 'H') useHint();
     });
@@ -733,6 +903,9 @@ function cacheDom() {
         winTime: 'win-time', winMoves: 'win-moves', winPar: 'win-par',
         nextLevelBtn: 'next-level-btn', replayBtn: 'replay-btn',
         confetti: 'confetti-canvas', toast: 'toast',
+        levelsBtn: 'levels-btn', levelsIntroBtn: 'levels-intro-btn',
+        levelsOverlay: 'levels-overlay', levelsGrid: 'levels-grid',
+        levelsSummary: 'levels-summary', levelsCloseBtn: 'levels-close-btn',
     };
     for (const [key, id] of Object.entries(ids)) el[key] = document.getElementById(id);
 }

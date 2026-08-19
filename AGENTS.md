@@ -56,9 +56,18 @@ Everything else (levels, hints, par) derives from this rule. The sample target i
 - The hidden solution uses `solW`/`solH` (from the level spec). The player may solve with *any* W/H that reproduces the cloth — only the cloth is checked.
 
 ### Levels
-- `LEVELS` table: 10 hand-tuned entries `{ w, h, dyes, name }` (Tabby → Jacquard), ramping repeat size and dye count. Beyond level 10, `levelSpec()` generates endless levels (3–4 repeats, 5 dyes, cycling names).
-- `generateLevel(n)` rerolls random sequences (up to 40 attempts) until the cloth is non-trivial: ≥ `min(3, w*h)` distinct shades and not both sequences monochrome.
+- `LEVELS` table: 10 hand-tuned entries `{ w, h, dyes, name }` (Tabby → Jacquard), ramping repeat size and dye count. Beyond level 10, `levelSpec()` generates endless levels (3–4 repeats, 5 dyes, cycling names) — **deterministic per level number** (seeded PRNG).
+- **Levels are deterministic**: `solveLevel(n, variation)` is a pure function that computes the hidden solution + target cloth from a seeded PRNG (`mulberry32`, seed = `levelSeed(n, variation)`). Same level number → same pattern. This is what makes previews and stats meaningful.
+- `variation` (default 0) offsets the seed. The **Shuffle** button increments it for fresh colors on the same level; stats are only recorded for `variation === 0` (the canonical pattern).
+- `generateLevel(n, variation)` rerolls random sequences (up to 40 attempts) until the cloth is non-trivial: ≥ `min(3, w*h)` distinct shades and not both sequences monochrome.
 - Player always starts on an all-cream loom with a 1×1 repeat.
+
+### Level select (Pattern Library)
+- Opened via the **▦ HUD button** or the **"Browse patterns"** button on the intro. Rendered by `renderLevelSelect()` into `#levels-grid`.
+- Shows `LIBRARY_COUNT` (16) cards: mini cloth preview (6×5 downsample of the target), level number, name, earned stars, and best time/moves if completed.
+- **Unlock rule**: level `n` is unlocked if `n === 1`, or the previous level has ≥1 star, or `n ≤ state.level` (reached before). Locked cards are disabled and show 🔒.
+- Picking a card closes the library + intro, and calls `generateLevel(n, 0)`.
+- Header shows total stars collected (`#levels-summary`).
 
 ### Interactions
 - **Thread strips**: one `<button class="thread">` per cloth column (warp, top) and per row (weft, left), *tiled* from the repeat — button `dataset.idx = position % W` (or `% H`). Clicking any tile edits that repeat slot. Hovering a thread lights every cloth cell it passes through (`thread-lit` class).
@@ -83,7 +92,9 @@ Everything else (levels, hints, par) derives from this rule. The sample target i
 - Win modal shows time, moves, par, animated stars; "Next pattern" / "Weave again".
 
 ### Persistence
-- `localStorage` key **`loom.save.v2`** → `{ level, sound, best: { [level]: stars } }`. Saved on level generate, win, and sound toggle. Loaded on boot; intro button becomes "Continue · Pattern Nº N" if `level > 1`.
+- `localStorage` key **`loom.save.v3`** → `{ level, sound, best: { [level]: { stars, time, moves, ms } } }`. Saved on level generate, win, and sound toggle. Loaded on boot; intro button becomes "Continue · Pattern Nº N" if `level > 1`.
+- **Legacy migration**: `loadGame()` reads the old `loom.save.v2` key (where `best` was a plain star count) and migrates it to `v3` on first load.
+- `bestStarsFor(level)` is the safe accessor for a level's star count (returns 0 if absent).
 
 ### Sound
 - Tiny WebAudio blips (`blip(freq, dur, type, gain)`), created lazily on first user gesture. Mute toggle in HUD, persisted. All sound calls are wrapped in try/catch — sound must never break gameplay.

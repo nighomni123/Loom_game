@@ -41,11 +41,24 @@ server.listen(PORT, async () => {
         check('intro overlay visible', await page.isVisible('#intro-overlay'));
         check('intro has 3 steps', (await page.locator('.step').count()) === 3);
         check('start button visible', await page.isVisible('#start-btn'));
+        check('intro has browse-patterns button', await page.isVisible('#levels-intro-btn'));
 
-        // --- Start ---
-        await page.click('#start-btn');
+        // --- Level select from intro ---
+        await page.click('#levels-intro-btn');
         await page.waitForTimeout(300);
-        check('intro hidden after start', !(await page.isVisible('#intro-overlay')));
+        check('levels overlay opens from intro', await page.isVisible('#levels-overlay'));
+        check('library shows 16 cards', (await page.locator('.level-card').count()) === 16);
+        check('level 1 card unlocked', !(await page.locator('.level-card[data-level="1"]').isDisabled()));
+        check('level 2 card locked (fresh save)', await page.locator('.level-card[data-level="2"]').isDisabled());
+        check('each card has a preview', (await page.locator('.level-preview').count()) === 16);
+        check('summary shows star count', (await page.textContent('#levels-summary')).includes('★'));
+
+        // Jump straight to level 1 from the library (also dismisses the intro)
+        await page.click('.level-card[data-level="1"]');
+        await page.waitForTimeout(300);
+        check('levels overlay closes on pick', !(await page.isVisible('#levels-overlay')));
+        check('intro dismissed on pick', !(await page.isVisible('#intro-overlay')));
+        check('level chip shows Nº 1', (await page.textContent('#level-chip')).includes('Nº 1'));
 
         // --- Layout sanity ---
         const boxes = {};
@@ -110,8 +123,17 @@ server.listen(PORT, async () => {
         check('win overlay closed', !(await page.isVisible('#win-overlay')));
 
         // --- Persistence ---
-        const saved = await page.evaluate(() => localStorage.getItem('loom.save.v2'));
+        const saved = await page.evaluate(() => localStorage.getItem('loom.save.v3'));
         check('progress saved', saved && JSON.parse(saved).level === 2, saved);
+
+        // --- Library reflects progress ---
+        await page.click('#levels-btn');
+        await page.waitForTimeout(300);
+        check('levels overlay opens from HUD', await page.isVisible('#levels-overlay'));
+        check('level 2 unlocked after progress', !(await page.locator('.level-card[data-level="2"]').isDisabled()));
+        await page.click('#levels-close-btn');
+        await page.waitForTimeout(200);
+        check('levels overlay closes via X', !(await page.isVisible('#levels-overlay')));
 
         // --- Keyboard shortcuts ---
         await page.click('#warp-strip .thread:nth-child(1)');
