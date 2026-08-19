@@ -82,6 +82,28 @@ async function captureScreenshots() {
             await page.screenshot({ path: path.join(OUT, 'solved.png') });
             console.log('Captured: screenshots/solved.png');
 
+            // 4. Mobile gameplay — phone viewport, a few moves in
+            const mobileCtx = await browser.newContext({
+                viewport: { width: 390, height: 844 },
+                deviceScaleFactor: 2,
+                hasTouch: true,
+                isMobile: true,
+            });
+            const mobile = await mobileCtx.newPage();
+            await mobile.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+            await mobile.waitForTimeout(600);
+            await mobile.click('#start-btn');
+            await mobile.waitForTimeout(400);
+            await mobile.click('#warp-plus');
+            await mobile.click('#weft-plus');
+            await mobile.click('#warp-strip .thread:nth-child(1)');
+            await mobile.click('#warp-strip .thread:nth-child(2)');
+            await mobile.click('#weft-strip .thread:nth-child(1)');
+            await mobile.waitForTimeout(500);
+            await mobile.screenshot({ path: path.join(OUT, 'mobile.png') });
+            console.log('Captured: screenshots/mobile.png');
+            await mobileCtx.close();
+
         } catch (error) {
             console.error('Error capturing screenshots:', error);
         } finally {

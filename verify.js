@@ -142,6 +142,74 @@ server.listen(PORT, async () => {
 
         check('no console errors', errors.length === 0, errors.join(' | ').slice(0, 200));
 
+        // ================= Mobile (phone viewport + touch) =================
+        const mobile = await (await browser.newContext({
+            viewport: { width: 390, height: 844 },
+            hasTouch: true,
+            isMobile: true,
+        })).newPage();
+        mobile.on('console', m => { if (m.type() === 'error') errors.push('mobile: ' + m.text()); });
+        mobile.on('pageerror', e => errors.push('mobile: ' + String(e)));
+
+        await mobile.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+        await mobile.waitForTimeout(400);
+        await mobile.click('#start-btn');
+        await mobile.waitForTimeout(300);
+
+        // Loom must fit inside the phone viewport
+        const frame = await mobile.locator('.loom-frame').boundingBox();
+        check('mobile: loom frame fits viewport', frame && frame.width <= 390, frame ? `${Math.round(frame.width)}px` : 'null');
+        const cellBox = await mobile.locator('#player-grid .cell').first().boundingBox();
+        check('mobile: cells at least 15px', cellBox && cellBox.width >= 15, cellBox ? `${Math.round(cellBox.width)}px` : 'null');
+
+        // Long-press a cloth cell = weft cycle backward (Shift-click alternative)
+        const longPress = async (selector) => {
+            const b = await mobile.locator(selector).first().boundingBox();
+            const x = b.x + b.width / 2, y = b.y + b.height / 2;
+            await mobile.evaluate(({ x, y }) => {
+                const el = document.elementFromPoint(x, y);
+                el.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', clientX: x, clientY: y, bubbles: true }));
+            }, { x, y });
+            await mobile.waitForTimeout(600);
+            await mobile.evaluate(({ x, y }) => {
+                const el = document.elementFromPoint(x, y);
+                el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', clientX: x, clientY: y, bubbles: true }));
+            }, { x, y });
+        };
+
+        const weftColor = async () => mobile.evaluate(() => document.querySelector('#weft-strip .thread').style.backgroundColor);
+        const warpColor = async () => mobile.evaluate(() => document.querySelector('#warp-strip .thread').style.backgroundColor);
+
+        await longPress('#player-grid .cell');
+        await mobile.waitForTimeout(200);
+        check('mobile: long-press cell counts a move', (await mobile.textContent('#moves-chip')).includes('1'));
+        check('mobile: long-press cell cycled weft', (await weftColor()) === 'rgb(124, 139, 111)', await weftColor());
+
+        await longPress('#warp-strip .thread:nth-child(1)');
+        await mobile.waitForTimeout(200);
+        check('mobile: long-press thread cycles backward', (await warpColor()) === 'rgb(124, 139, 111)', await warpColor());
+        check('mobile: moves = 2', (await mobile.textContent('#moves-chip')).includes('2'));
+
+        // A normal tap still cycles forward (and is not swallowed by long-press logic).
+        // Warp is at Sage after the backward long-press; forward from Sage is Cream.
+        const tapBox = await mobile.locator('#player-grid .cell').first().boundingBox();
+        await mobile.touchscreen.tap(tapBox.x + tapBox.width / 2, tapBox.y + tapBox.height / 2);
+        await mobile.waitForTimeout(200);
+        check('mobile: tap still cycles warp forward', (await warpColor()) === 'rgb(242, 232, 207)', await warpColor());
+        check('mobile: moves = 3', (await mobile.textContent('#moves-chip')).includes('3'));
+
+        // Modals fit the phone screen
+        await mobile.click('#levels-btn');
+        await mobile.waitForTimeout(300);
+        const levelsModal = await mobile.locator('.levels-modal').boundingBox();
+        check('mobile: library modal fits screen', levelsModal && levelsModal.height <= 844 && levelsModal.width <= 390,
+            levelsModal ? `${Math.round(levelsModal.width)}x${Math.round(levelsModal.height)}` : 'null');
+        await mobile.click('#levels-close-btn');
+        await mobile.waitForTimeout(200);
+
+        check('no console errors (mobile)', errors.filter(e => e.startsWith('mobile:')).length === 0,
+            errors.filter(e => e.startsWith('mobile:')).join(' | ').slice(0, 200));
+
     } catch (e) {
         console.error('VERIFICATION ERROR:', e);
         failures++;

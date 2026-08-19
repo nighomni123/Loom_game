@@ -381,6 +381,7 @@ function cycleThread(kind, idx, dir) {
 }
 
 function onClothClick(event) {
+    if (consumeLongPressClick()) return;
     const cell = event.target.closest('.cell');
     if (!cell) return;
     const x = Number(cell.dataset.x);
@@ -393,9 +394,70 @@ function onClothClick(event) {
 }
 
 function onThreadClick(event) {
+    if (consumeLongPressClick()) return;
     const t = event.target.closest('.thread');
     if (!t) return;
     cycleThread(t.dataset.kind, Number(t.dataset.idx), event.shiftKey ? -1 : 1);
+}
+
+// ---------- Touch: long-press = Shift-click (weft / backward cycle) ----------
+// Phones have no Shift key, so holding a cell or thread for ~450ms performs
+// the backward/weft cycle instead of the tap action.
+
+let longPressTimer = null;
+let longPressPos = null;
+let suppressNextClick = false;
+
+function consumeLongPressClick() {
+    if (!suppressNextClick) return false;
+    suppressNextClick = false; // the click that follows a long-press is swallowed
+    return true;
+}
+
+function buzz() {
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) { /* haptics are optional */ }
+}
+
+function wireLongPress(container, onLongPress) {
+    container.addEventListener('pointerdown', (event) => {
+        suppressNextClick = false; // a fresh gesture clears any stale suppression
+        if (event.pointerType !== 'touch') return;
+        longPressPos = { x: event.clientX, y: event.clientY };
+        const target = event.target;
+        clearTimeout(longPressTimer);
+        longPressTimer = setTimeout(() => {
+            longPressTimer = null;
+            suppressNextClick = true;
+            buzz();
+            onLongPress(target);
+        }, 450);
+    });
+    container.addEventListener('pointermove', (event) => {
+        if (!longPressTimer || !longPressPos) return;
+        const dx = event.clientX - longPressPos.x;
+        const dy = event.clientY - longPressPos.y;
+        if (dx * dx + dy * dy > 144) { // finger drifted > 12px: it's a scroll, not a press
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+    });
+    const cancel = () => { clearTimeout(longPressTimer); longPressTimer = null; };
+    container.addEventListener('pointerup', cancel);
+    container.addEventListener('pointercancel', cancel);
+    container.addEventListener('pointerleave', cancel);
+    container.addEventListener('contextmenu', (event) => event.preventDefault());
+}
+
+function onClothLongPress(target) {
+    const cell = target.closest('.cell');
+    if (!cell) return;
+    cycleThread('weft', Number(cell.dataset.y) % state.H, -1);
+}
+
+function onThreadLongPress(target) {
+    const t = target.closest('.thread');
+    if (!t) return;
+    cycleThread(t.dataset.kind, Number(t.dataset.idx), -1);
 }
 
 // Hovering a thread lights every cloth cell that thread passes through.
@@ -803,6 +865,9 @@ function wireControls() {
     el.playerGrid.addEventListener('click', onClothClick);
     el.warpStrip.addEventListener('click', onThreadClick);
     el.weftStrip.addEventListener('click', onThreadClick);
+    wireLongPress(el.playerGrid, onClothLongPress);
+    wireLongPress(el.warpStrip, onThreadLongPress);
+    wireLongPress(el.weftStrip, onThreadLongPress);
     el.warpStrip.addEventListener('mouseover', e => onStripHover(e, true));
     el.warpStrip.addEventListener('mouseout', e => onStripHover(e, false));
     el.weftStrip.addEventListener('mouseover', e => onStripHover(e, true));

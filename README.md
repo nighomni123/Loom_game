@@ -16,6 +16,9 @@ A meditative puzzle of warp, weft and color. Find the hidden repeat and weave th
 ![Solved Puzzle](screenshots/solved.png)
 *A finished weave — stars, time and move count on the win card.*
 
+![Mobile](screenshots/mobile.png)
+*Fully playable on a phone — the loom scales to fit, and long-press replaces Shift-tap.*
+
 ## The Idea
 
 People rarely notice how small, intentional choices create ordered beauty — in textiles, music, or systems. LOOM makes that instinct playable.
@@ -43,13 +46,14 @@ It's a genuine 2D constraint puzzle that quietly teaches the "see the repeat" in
 - **Timer & move counter** in the HUD.
 - **Progress saving** — level, sound preference and best stats persist in `localStorage`.
 - **Polish** — woven cloth texture, wooden loom frame, thread-scrap confetti, gentle WebAudio chimes, keyboard shortcuts, reduced-motion support.
+- **Mobile-ready** — fluid layout that fits any phone width, big touch targets, long-press to cycle backward/weft (with haptic feedback), and safe-area support for notched screens.
 
 ## Controls
 
 | Action | Input |
 | --- | --- |
 | Cycle dye forward | Click thread / cloth cell |
-| Cycle dye backward | <kbd>Shift</kbd> + click |
+| Cycle dye backward | <kbd>Shift</kbd> + click, or long-press (touch) |
 | Undo | <kbd>Z</kbd> or Undo button |
 | Hint | <kbd>H</kbd> or Hint button |
 | Pattern Library | ▦ button (header) or "Browse patterns" |

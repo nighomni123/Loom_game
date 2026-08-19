@@ -22,6 +22,7 @@
 
   --cell: 30px;
   --cell-sm: 21px;
+  --strip: 26px;
   --gap: 2px;
   --radius: 14px;
 
@@ -326,11 +327,11 @@ main {
   margin-inline: auto;
 }
 
-.loom-corner { width: 26px; height: 26px; }
+.loom-corner { width: var(--strip); height: var(--strip); }
 
 .strip { display: grid; gap: var(--gap); }
-#warp-strip { grid-template-columns: repeat(12, var(--cell)); grid-template-rows: 26px; }
-#weft-strip { grid-template-rows: repeat(10, var(--cell)); grid-template-columns: 26px; }
+#warp-strip { grid-template-columns: repeat(12, var(--cell)); grid-template-rows: var(--strip); }
+#weft-strip { grid-template-rows: repeat(10, var(--cell)); grid-template-columns: var(--strip); }
 
 .thread {
   border: none;
@@ -384,7 +385,7 @@ main {
 .loom-hint {
   margin: .65rem auto 0;
   /* keep the hint from inflating the frame: cap it at the loom's own width */
-  max-width: calc(12 * var(--cell) + 11 * var(--gap) + 26px + 8px);
+  max-width: calc(12 * var(--cell) + 11 * var(--gap) + var(--strip) + 8px);
   font-size: .72rem;
   color: rgba(255, 253, 247, .62);
   text-align: center;
@@ -760,14 +761,90 @@ main {
 }
 
 @media (max-width: 640px) {
-  :root { --cell: 20px; --cell-sm: 14px; }
-  main { padding: 1.2rem .8rem 2.4rem; }
-  .topbar { padding: .7rem 1rem; }
+  :root {
+    /* fluid cells: the loom (12 cells + gaps + strip + frame padding) always fits the viewport */
+    --cell: clamp(15px, calc((100vw - 122px) / 12), 24px);
+    --cell-sm: clamp(11px, calc((100vw - 122px) / 12), 17px);
+    --strip: 30px; /* chunkier thread strips = easier tap targets */
+  }
+
+  body { overscroll-behavior-y: none; }
+
+  main { padding: 1rem .5rem calc(2.2rem + env(safe-area-inset-bottom)); }
+  .boards { gap: 1.2rem; margin-bottom: 1.4rem; }
+
+  .topbar { padding: .55rem .7rem; gap: .5rem; }
+  .brand-mark { width: 26px; height: 26px; }
+  .brand-text h1 { font-size: 1.2rem; }
   .brand-text p { display: none; }
-  .steps { grid-template-columns: 1fr; }
-  .modal { padding: 1.6rem 1.3rem; }
-  .loom-hint { font-size: .66rem; }
+  .hud { gap: .35rem; }
+  .chip { padding: .3rem .6rem; font-size: .74rem; gap: .35rem; }
+  .chip-label { display: none; }
+  .meter { width: 56px; }
+  #level-chip { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+
+  /* bigger touch targets */
+  .icon-btn { width: 40px; height: 40px; font-size: 1rem; }
+  .stepper { min-width: 132px; padding: .6rem .8rem; }
+  .stepper-controls button { width: 42px; height: 42px; font-size: 1.3rem; }
+  .btn { padding: .72rem 1.15rem; font-size: .84rem; }
+  .btn.big { padding: .9rem 1.9rem; }
+  .actions { gap: .45rem; }
+
+  /* thicker thread pills so they read as tappable */
+  .thread.warp { width: 16px; border-radius: 8px; }
+  .thread.weft { height: 16px; border-radius: 8px; }
+
+  .loom-frame { padding: 10px; border-radius: 14px; }
+  .loom-inner { gap: 6px; }
+  .loom-hint { font-size: .64rem; }
+
+  .swatch-card { padding: .8rem .8rem .7rem; }
+  .swatch-title { font-size: .92rem; }
+
+  .console { gap: .6rem; }
+
+  /* modals: fit small screens, scroll if needed */
+  .overlay { padding: .8rem; align-items: flex-end; }
+  .modal {
+    padding: 1.4rem 1.1rem calc(1.4rem + env(safe-area-inset-bottom));
+    border-radius: 18px;
+    max-height: calc(100dvh - 1.6rem);
+    overflow-y: auto;
+  }
+  .intro-modal { align-self: center; }
+  .intro-brand h2 { font-size: 1.9rem; }
+  .steps { grid-template-columns: 1fr; gap: .7rem; margin-bottom: 1rem; }
+  .step { flex-direction: row; text-align: left; padding: .7rem .9rem; gap: .8rem; }
+  .step svg { flex: none; width: 64px; height: 44px; }
+  .win-stats { gap: 1.4rem; }
+
+  .levels-modal { max-width: none; width: 100%; }
+  .levels-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); max-height: none; }
+  .levels-head h2 { font-size: 1.35rem; }
+
+  #toast { bottom: calc(18px + env(safe-area-inset-bottom)); font-size: .8rem; }
 }
+
+/* touch devices: no hover states (they stick after a tap), no tap highlight */
+@media (hover: none), (pointer: coarse) {
+  .thread:hover { transform: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12); }
+  .icon-btn:hover,
+  .btn.ghost:hover:not(:disabled),
+  .stepper-controls button:hover:not(:disabled),
+  .level-card:hover:not(:disabled) { transform: none; box-shadow: var(--shadow-sm); }
+  .btn.primary:hover { transform: none; filter: none; }
+  .swatch-card:hover { transform: none; }
+  #player-grid .cell:hover { filter: none; }
+  #player-grid .cell:active { filter: brightness(.9); }
+  .thread:active { transform: scale(.96); }
+}
+
+button, .cell, .thread {
+  touch-action: manipulation;      /* kill double-tap zoom on game controls */
+  -webkit-tap-highlight-color: transparent;
+}
+#player-grid, .strip { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

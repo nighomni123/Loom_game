@@ -74,6 +74,7 @@ Everything else (levels, hints, par) derives from this rule. The sample target i
 - **Cloth cells**: click = cycle that cell's warp thread; Shift-click = cycle its weft thread (backward).
 - **Repeat steppers**: ± buttons in the console; disabled at bounds.
 - **Keyboard**: `Z` = undo, `H` = hint (ignored while overlays are open).
+- **Touch / long-press**: phones have no Shift key, so `wireLongPress()` (pointer events, touch only) makes a **450ms hold** perform the backward/weft cycle on both cloth cells and threads, with a 12px drift tolerance and `navigator.vibrate` feedback. The click that follows a completed long-press is swallowed via `consumeLongPressClick()`. `contextmenu` is prevented on the board so the OS long-press menu never fires.
 
 ### Undo
 - Every mutating action calls `pushUndo()` first (snapshot of `W, H, warpSeq, weftSeq, moves`; capped at 200). `undo()` restores and rebuilds strips if structure changed. Undo is disabled after a win.
@@ -131,8 +132,8 @@ Boot sequence (`DOMContentLoaded`): `cacheDom()` → `buildFabric()` ×2 → `wi
 - **Aesthetic**: warm linen background with a faint woven grid (two repeating-linear-gradients), wooden loom frame with grain (`::before` overlay), sample shown as a pinned paper swatch card (slight rotation, brass pin).
 - **Cloth texture**: `.cell.over` / `.cell.under` alternate 2px stripe gradients (vertical/horizontal) to fake over-under weaving.
 - **Threads**: `.thread.warp` = 12px-wide vertical pill; `.thread.weft` = 12px-tall horizontal pill; both have lengthwise fiber stripes.
-- **Responsive**: cell sizes shrink at 900px and 640px breakpoints; `prefers-reduced-motion` disables animation.
-- **Layout gotcha (fixed bug — don't regress)**: `.loom-inner` is a 2×2 grid (`corner | warp strip` / `weft strip | player grid`) with `width: fit-content; margin-inline: auto`. The `.loom-hint` caption has a `max-width` tied to the loom width — without it, the long caption inflates the frame and CSS grid stretch silently widens the weft-strip column, pushing threads away from the cloth. Keep both.
+- **Responsive / mobile**: cell sizes shrink at 900px; at ≤640px cells become fluid — `--cell: clamp(15px, calc((100vw - 122px) / 12), 24px)` — so the loom always fits the viewport width (the 122px constant = gaps + `--strip` + frame padding + main padding; keep it in sync if those change). Thread strips use the `--strip` token (26px desktop, 30px on touch). Modals become bottom-anchored scrollable sheets with `env(safe-area-inset-bottom)` padding; the viewport meta uses `viewport-fit=cover`. A `(hover: none), (pointer: coarse)` block disables sticky hover states on touch, and `touch-action: manipulation` kills double-tap zoom on game controls. `prefers-reduced-motion` disables animation.
+- **Layout gotcha (fixed bug — don't regress)**: `.loom-inner` is a 2×2 grid (`corner | warp strip` / `weft strip | player grid`) with `width: fit-content; margin-inline: auto`. The `.loom-hint` caption has a `max-width` tied to the loom width (uses `var(--strip)`) — without it, the long caption inflates the frame and CSS grid stretch silently widens the weft-strip column, pushing threads away from the cloth. Keep both.
 
 ---
 
