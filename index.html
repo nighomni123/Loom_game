@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="LOOM — a meditative puzzle of warp, weft and color. Find the hidden repeat and weave the cloth to match the sample.">
+    <meta name="theme-color" content="#F6F1E7">
+    <title>LOOM — a weaving puzzle</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='14' height='14' rx='4' fill='%233D5A80'/%3E%3Crect x='17' y='1' width='14' height='14' rx='4' fill='%23C1440E'/%3E%3Crect x='1' y='17' width='14' height='14' rx='4' fill='%23E0A32E'/%3E%3Crect x='17' y='17' width='14' height='14' rx='4' fill='%237C8B6F'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <div class="brand-text">
+                <h1>LOOM</h1>
+                <p>A puzzle of warp &amp; weft</p>
+            </div>
+        </div>
+        <div class="hud">
+            <div class="chip" id="level-chip" title="Current pattern">Nº 1 · Tabby</div>
+            <div class="chip" title="How closely your cloth matches the sample">
+                <span class="chip-label">Match</span>
+                <div class="meter" role="progressbar" aria-label="Match percentage" aria-valuemin="0" aria-valuemax="100">
+                    <div id="meter-fill"></div>
+                </div>
+                <span id="match-pct">0%</span>
+            </div>
+            <div class="chip" id="moves-chip" title="Moves used">Moves 0</div>
+            <div class="chip" id="time-chip" title="Time on this pattern">0:00</div>
+            <button class="icon-btn" id="sound-btn" aria-label="Toggle sound">🔊</button>
+            <button class="icon-btn" id="help-btn" aria-label="How to play">?</button>
+        </div>
+    </header>
+
+    <main>
+        <section class="boards" aria-label="Game boards">
+            <figure class="swatch-card">
+                <div class="swatch-pin" aria-hidden="true"></div>
+                <figcaption>
+                    <span class="swatch-title">Sample</span>
+                    <span class="swatch-sub" id="pattern-name">Tabby</span>
+                </figcaption>
+                <div id="sample-grid" class="fabric" aria-label="Sample fabric to reproduce"></div>
+            </figure>
+
+            <div class="loom-frame">
+                <div class="loom-inner">
+                    <div class="loom-corner" aria-hidden="true"></div>
+                    <div id="warp-strip" class="strip" role="group" aria-label="Warp threads (vertical)"></div>
+                    <div id="weft-strip" class="strip" role="group" aria-label="Weft threads (horizontal)"></div>
+                    <div id="player-grid" class="fabric playable" aria-label="Your loom"></div>
+                </div>
+                <p class="loom-hint">Tap a thread to dip it in a new dye · tap the cloth to change its warp thread · <kbd>Shift</kbd>-tap cycles backward / weft</p>
+            </div>
+        </section>
+
+        <section class="console" aria-label="Loom controls">
+            <div class="stepper" id="warp-stepper">
+                <span class="stepper-label">Warp repeat</span>
+                <div class="stepper-controls">
+                    <button id="warp-minus" aria-label="Decrease warp repeat">−</button>
+                    <span id="warp-repeat-val">1</span>
+                    <button id="warp-plus" aria-label="Increase warp repeat">+</button>
+                </div>
+            </div>
+            <div class="stepper" id="weft-stepper">
+                <span class="stepper-label">Weft repeat</span>
+                <div class="stepper-controls">
+                    <button id="weft-minus" aria-label="Decrease weft repeat">−</button>
+                    <span id="weft-repeat-val">1</span>
+                    <button id="weft-plus" aria-label="Increase weft repeat">+</button>
+                </div>
+            </div>
+            <div class="actions">
+                <button id="undo-btn" class="btn ghost" title="Undo (Z)">↩ Undo</button>
+                <button id="hint-btn" class="btn ghost" title="Hint (H)">✦ Hint · <span id="hint-count">3</span></button>
+                <button id="shuffle-btn" class="btn ghost" title="New colors, same level">Shuffle</button>
+                <button id="reveal-btn" class="btn ghost danger" title="Show the solution (no stars)">Reveal</button>
+            </div>
+        </section>
+    </main>
+
+    <div id="intro-overlay" class="overlay">
+        <div class="modal intro-modal">
+            <div class="intro-brand">
+                <span class="brand-mark big" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                <h2>LOOM</h2>
+            </div>
+            <p class="tagline">A puzzle of warp, weft &amp; color.</p>
+            <div class="steps">
+                <div class="step">
+                    <svg viewBox="0 0 96 64" width="96" height="64" aria-hidden="true">
+                        <rect x="6" y="4" width="16" height="56" rx="7" fill="#3D5A80"/>
+                        <rect x="28" y="4" width="16" height="56" rx="7" fill="#C1440E"/>
+                        <rect x="50" y="4" width="16" height="56" rx="7" fill="#E0A32E"/>
+                        <rect x="72" y="4" width="16" height="56" rx="7" fill="#7C8B6F"/>
+                        <circle cx="36" cy="32" r="13" fill="none" stroke="#2E2A24" stroke-width="2" opacity=".5"/>
+                    </svg>
+                    <h3>Tap the threads</h3>
+                    <p>Warp runs down, weft runs across. Each tap dips a thread in a new dye.</p>
+                </div>
+                <div class="step">
+                    <svg viewBox="0 0 110 64" width="104" height="64" aria-hidden="true">
+                        <rect x="2" y="19" width="26" height="26" rx="6" fill="#3D5A80"/>
+                        <text x="36" y="38" font-size="18" fill="#6E675C" text-anchor="middle">+</text>
+                        <rect x="44" y="19" width="26" height="26" rx="6" fill="#C1440E"/>
+                        <text x="78" y="38" font-size="18" fill="#6E675C" text-anchor="middle">=</text>
+                        <rect x="86" y="19" width="22" height="26" rx="6" fill="#7F4F47"/>
+                    </svg>
+                    <h3>Colors blend</h3>
+                    <p>Where warp and weft cross, their dyes mix into cloth.</p>
+                </div>
+                <div class="step">
+                    <svg viewBox="0 0 110 64" width="104" height="64" aria-hidden="true">
+                        <rect x="2" y="19" width="13" height="13" rx="3" fill="#7F4F47"/>
+                        <rect x="16" y="19" width="13" height="13" rx="3" fill="#8E7E57"/>
+                        <rect x="2" y="33" width="13" height="13" rx="3" fill="#D99671"/>
+                        <rect x="16" y="33" width="13" height="13" rx="3" fill="#E9C681"/>
+                        <path d="M38 32 h14 m0 0 l-5 -5 m5 5 l-5 5" stroke="#6E675C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                        <rect x="60" y="19" width="13" height="13" rx="3" fill="#7F4F47"/>
+                        <rect x="74" y="19" width="13" height="13" rx="3" fill="#8E7E57"/>
+                        <rect x="60" y="33" width="13" height="13" rx="3" fill="#D99671"/>
+                        <rect x="74" y="33" width="13" height="13" rx="3" fill="#E9C681"/>
+                        <circle cx="98" cy="32" r="10" fill="#7C8B6F"/>
+                        <path d="M93.5 32 l3 3.5 l6 -7" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <h3>Match the sample</h3>
+                    <p>Find the hidden repeat, then weave your cloth to match.</p>
+                </div>
+            </div>
+            <p class="fineprint">Fewer moves earn more stars. <kbd>Shift</kbd>-tap a thread to cycle backward.</p>
+            <button id="start-btn" class="btn primary big">Start weaving</button>
+        </div>
+    </div>
+
+    <div id="win-overlay" class="overlay" hidden>
+        <div class="modal win-modal">
+            <h2 id="win-title">Beautifully woven!</h2>
+            <div id="win-stars" aria-hidden="true"></div>
+            <div class="win-stats">
+                <div class="win-stat"><b id="win-time">0:00</b><span>Time</span></div>
+                <div class="win-stat"><b id="win-moves">0</b><span>Moves</span></div>
+                <div class="win-stat"><b id="win-par">0</b><span>Par</span></div>
+            </div>
+            <div class="modal-actions">
+                <button id="replay-btn" class="btn ghost">Weave again</button>
+                <button id="next-level-btn" class="btn primary">Next pattern →</button>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="confetti-canvas" aria-hidden="true"></canvas>
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
