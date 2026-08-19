@@ -1,6 +1,6 @@
 // Captures real screenshots of the game for the README.
 // Usage: node capture.js
-process.env.PLAYWRIGHT_BROWSERS_PATH = require('path').join(__dirname, '.pw-browsers');
+process.env.PLAYWRIGHT_BROWSERS_PATH = require('path').join(__dirname, '..', '..', '.pw-browsers');
 
 const { chromium } = require('playwright');
 const http = require('http');
