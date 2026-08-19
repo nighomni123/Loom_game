@@ -1,5 +1,5 @@
 // Automated verification: console errors, layout, and a full playthrough.
-process.env.PLAYWRIGHT_BROWSERS_PATH = require('path').join(__dirname, '..', '..', '.pw-browsers');
+process.env.PLAYWRIGHT_BROWSERS_PATH = require('path').join(__dirname, '..', '..', 'Do not delete folder', '.pw-browsers');
 const { chromium } = require('playwright');
 const http = require('http');
 const fs = require('fs');

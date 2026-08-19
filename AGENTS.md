@@ -152,8 +152,8 @@ node verify.js     # automated playthrough; must end with "ALL CHECKS PASSED"
 
 **Environment constraints (important):**
 - This machine runs **macOS 12.7.6**. Playwright ≥ 1.46 refuses to install Chromium here ("does not support chromium on mac12"). The project is pinned to **`playwright@1.45.1`** — do not upgrade it.
-- Browsers live **inside the workspace** at `.pw-browsers/` (gitignored). Both scripts set `process.env.PLAYWRIGHT_BROWSERS_PATH` to it. The system cache dir is not writable from the sandbox.
-- If `.pw-browsers/chromium-1124` is missing: `npm install --cache "$PWD/.npm-cache"` then `PLAYWRIGHT_BROWSERS_PATH="$PWD/.pw-browsers" npx playwright install chromium`. (The `--cache` flag avoids a non-writable `~/.npm`.)
+- Tooling lives **outside the repo**, in `../../Do not delete folder/` (i.e. `~/Documents/Projects/Do not delete folder/`): shared `.pw-browsers/` (Chromium 1124), shared `node_modules/` (playwright 1.45.1), and `.npm-cache/`. Both scripts set `process.env.PLAYWRIGHT_BROWSERS_PATH` to the shared browsers; the project's `node_modules` is a **symlink** to the shared one (Node resolves `require('playwright')` through it). Playwright is also installed globally (`~/.npm-global`) with `PLAYWRIGHT_BROWSERS_PATH` exported in `~/.zshrc`.
+- If the shared `chromium-1124` is missing: `npm install --cache "$PWD/../../Do not delete folder/.npm-cache"` then `PLAYWRIGHT_BROWSERS_PATH="$PWD/../../Do not delete folder/.pw-browsers" npx playwright install chromium`. (The `--cache` flag avoids a non-writable `~/.npm`.)
 - The local agent model **cannot view images** — verify visual changes via `verify.js` measurements (bounding boxes, computed styles), not by "looking" at screenshots.
 
 ### Git
