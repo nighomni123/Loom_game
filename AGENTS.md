@@ -26,11 +26,13 @@ Everything else (levels, hints, par) derives from this rule. The sample target i
 
 | File | Role |
 | --- | --- |
-| `index.html` | Single page: topbar HUD, sample swatch, loom frame (thread strips + player grid), control console, intro/win overlays, confetti canvas, toast. Loads `app.js` at the end of `<body>`. |
-| `style.css` | All styling. Design tokens in `:root` custom properties. No CSS-in-JS; JS only sets inline `backgroundColor` and toggles classes. |
+| `index.html` | Single page: topbar HUD, sample swatch, loom frame (thread strips + player grid), control console, intro/win overlays, confetti canvas, toast, `[data-ad-slot]` containers inside a `.page-columns` wrapper. Loads `app.js` then `ads.js` at the end of `<body>`. |
+| `style.css` | All styling. Design tokens in `:root` custom properties. No CSS-in-JS; JS only sets inline `backgroundColor` and toggles classes. Ad-slot sizing lives in the `.ad-*` rules. |
 | `app.js` | Entire game logic (~750 lines, one file, no modules). `'use strict'`, IIFE-free top-level script. |
 | `capture.js` | Playwright script: serves the folder on port 3456 and saves `screenshots/{intro,gameplay,solved}.png`. |
 | `verify.js` | Playwright script: serves on port 3457 and runs ~33 automated checks (layout, counts, moves, undo, hint, reveal→win, level advance, persistence, keyboard, console errors). **Run this after any gameplay change.** |
+| `ads.js` | Ad slots: fills every `[data-ad-slot]` container (footer leaderboard, intro/win banners, side rails ≥1420px). Renders house placeholders until `ADSENSE_CLIENT` is set at the top, then injects the AdSense loader once and mounts `<ins>` units. Isolated from `app.js`, all try/catch — ads must never break gameplay. |
+| `ads.txt` | Ad-network authorization file at the site root. Ships fully commented out; uncomment + insert the real pub id when AdSense is approved. |
 | `README.md` | Product narrative + how to play; references the three screenshots. |
 | `screenshots/*.png` | Real captures (2x device scale). Regenerate with `capture.js`. |
 | `Test_idea.md` | Original design brainstorm transcript. Historical only — do not treat as spec. |
@@ -174,6 +176,8 @@ node verify.js     # automated playthrough; must end with "ALL CHECKS PASSED"
 **Add a new HUD stat**: add a `.chip` in the header, register it in `cacheDom()`, update it inside `paint()`.
 
 **Change board size**: edit `COLS`/`ROWS` and the matching `repeat(...)` counts in `style.css` (`#sample-grid`, `#player-grid`, `#warp-strip`, `#weft-strip`) plus the `.loom-hint` max-width formula. Update `verify.js` cell-count expectations (currently 120).
+
+**Enable / change ads**: slot containers are `[data-ad-slot]` elements in `index.html` (`footer`, `intro`, `win`, `railLeft`, `railRight`); their reserved sizes live in `style.css` `.ad-*` rules; filling logic and the AdSense config live at the top of `ads.js`. To go live: set `ADSENSE_CLIENT` + unit ids there, uncomment `ads.txt`, redeploy. Deleting a container is enough to remove a slot.
 
 ---
 

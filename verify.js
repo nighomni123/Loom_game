@@ -74,6 +74,34 @@ server.listen(PORT, async () => {
         check('warp strip width matches grid', Math.abs(boxes['warp-strip'].width - boxes['player-grid'].width) < 8);
         check('weft strip height matches grid', Math.abs(boxes['weft-strip'].height - boxes['player-grid'].height) < 8);
 
+        // --- Ad slots (house placeholders until an ad network is configured) ---
+        check('5 ad slots on page', (await page.locator('[data-ad-slot]').count()) === 5);
+        check('every ad slot filled', (await page.locator('.ad-slot .house-ad').count()) === 5);
+        check('ad slots labeled', /advertisement/i.test(await page.locator('.ad-leaderboard').textContent()));
+        check('intro modal carries an ad slot', (await page.locator('#intro-overlay .ad-inline').count()) === 1);
+        const footBox = await page.locator('.ad-leaderboard').boundingBox();
+        check('footer ad sits below the loom', footBox && footBox.y > boxes['player-grid'].y + boxes['player-grid'].height,
+            footBox ? `y=${Math.round(footBox.y)}` : 'null');
+        check('footer ad fits the content column', footBox && footBox.width <= 728,
+            footBox ? `${Math.round(footBox.width)}px` : 'null');
+        check('side rails hidden at 1280px', (await page.locator('[data-ad-slot="railLeft"]').boundingBox()) === null);
+
+        // Wide screens: rails appear in the blank margins, never over the game.
+        const wide = await (await browser.newContext({ viewport: { width: 1600, height: 900 } })).newPage();
+        wide.on('console', m => { if (m.type() === 'error') errors.push('wide: ' + m.text()); });
+        wide.on('pageerror', e => errors.push('wide: ' + String(e)));
+        await wide.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+        await wide.waitForTimeout(400);
+        const railBox = await wide.locator('[data-ad-slot="railLeft"]').boundingBox();
+        const mainBox = await wide.locator('main').boundingBox();
+        const railRightBox = await wide.locator('[data-ad-slot="railRight"]').boundingBox();
+        check('wide: side rails are skyscrapers', railBox && railRightBox &&
+            railBox.width > 100 && railBox.height > 500 && railRightBox.height > 500,
+            railBox ? `${Math.round(railBox.width)}x${Math.round(railBox.height)}` : 'null');
+        check('wide: left rail beside content, not on top', railBox && mainBox && railBox.x + railBox.width <= mainBox.x);
+        check('wide: right rail beside content, not on top', railRightBox && mainBox && railRightBox.x >= mainBox.x + mainBox.width);
+        await wide.close();
+
         check('120 sample cells', (await page.locator('#sample-grid .cell').count()) === 120);
         check('120 player cells', (await page.locator('#player-grid .cell').count()) === 120);
         check('12 warp threads', (await page.locator('#warp-strip .thread').count()) === 12);
@@ -115,6 +143,7 @@ server.listen(PORT, async () => {
         check('win overlay appears', await page.isVisible('#win-overlay'));
         check('win title says revealed', (await page.textContent('#win-title')).toLowerCase().includes('reveal'));
         check('match is 100%', (await page.textContent('#match-pct')) === '100%');
+        check('win modal carries an ad slot', (await page.locator('#win-overlay .ad-inline').count()) === 1);
 
         // --- Next level ---
         await page.click('#next-level-btn');
@@ -161,6 +190,13 @@ server.listen(PORT, async () => {
         check('mobile: loom frame fits viewport', frame && frame.width <= 390, frame ? `${Math.round(frame.width)}px` : 'null');
         const cellBox = await mobile.locator('#player-grid .cell').first().boundingBox();
         check('mobile: cells at least 15px', cellBox && cellBox.width >= 15, cellBox ? `${Math.round(cellBox.width)}px` : 'null');
+
+        // Ads on phones: no rails (no blank linen), slim footer banner only
+        const mRail = await mobile.locator('[data-ad-slot="railLeft"]').boundingBox();
+        check('mobile: side rails hidden', mRail === null);
+        const mFoot = await mobile.locator('.ad-leaderboard').boundingBox();
+        check('mobile: footer ad fits viewport', mFoot && mFoot.width <= 390 && mFoot.height > 40,
+            mFoot ? `${Math.round(mFoot.width)}x${Math.round(mFoot.height)}` : 'null');
 
         // Long-press a cloth cell = weft cycle backward (Shift-click alternative)
         const longPress = async (selector) => {

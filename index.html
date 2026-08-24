@@ -38,8 +38,11 @@
         </div>
     </header>
 
-    <main>
-        <section class="boards" aria-label="Game boards">
+    <div class="page-columns">
+        <aside class="ad-slot ad-rail" data-ad-slot="railLeft" aria-label="Advertisement" hidden></aside>
+
+        <main>
+            <section class="boards" aria-label="Game boards">
             <figure class="swatch-card">
                 <div class="swatch-pin" aria-hidden="true"></div>
                 <figcaption>
@@ -84,7 +87,14 @@
                 <button id="reveal-btn" class="btn ghost danger" title="Show the solution (no stars)">Reveal</button>
             </div>
         </section>
-    </main>
+        </main>
+
+        <aside class="ad-slot ad-rail" data-ad-slot="railRight" aria-label="Advertisement" hidden></aside>
+    </div>
+
+    <footer class="ad-footer">
+        <div class="ad-slot ad-leaderboard" data-ad-slot="footer" aria-label="Advertisement"></div>
+    </footer>
 
     <div id="intro-overlay" class="overlay">
         <div class="modal intro-modal">
@@ -139,6 +149,7 @@
                 <button id="levels-intro-btn" class="btn ghost">Browse patterns</button>
                 <button id="start-btn" class="btn primary big">Start weaving</button>
             </div>
+            <div class="ad-slot ad-inline" data-ad-slot="intro" aria-label="Advertisement"></div>
         </div>
     </div>
 
@@ -155,6 +166,7 @@
                 <button id="replay-btn" class="btn ghost">Weave again</button>
                 <button id="next-level-btn" class="btn primary">Next pattern →</button>
             </div>
+            <div class="ad-slot ad-inline" data-ad-slot="win" aria-label="Advertisement"></div>
         </div>
     </div>
 
@@ -176,5 +188,7 @@
     <!-- Vercel Web Analytics (official CDN snippet — works with no build step) -->
     <script defer src="https://va.vercel-scripts.com/v1/script.js"></script>
     <script src="app.js"></script>
+    <!-- Ad slots: house placeholders until ADSENSE_CLIENT is set in ads.js -->
+    <script defer src="ads.js"></script>
 </body>
 </html>

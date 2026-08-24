@@ -1,0 +1,9 @@
+# ads.txt — authorizes ad networks to sell this site's inventory.
+# Required at the site root once real ads are enabled. See ads.js.
+#
+# When your Google AdSense account is approved:
+#   1. Remove the leading '#' from the record below.
+#   2. Replace pub-0000000000000000 with your own publisher id —
+#      the same id you set as ADSENSE_CLIENT in ads.js.
+#
+# google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0

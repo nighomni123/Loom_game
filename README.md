@@ -75,6 +75,27 @@ To regenerate the README screenshots (uses a workspace-local Playwright + Chromi
 node capture.js
 ```
 
+## Monetization (Ad Slots)
+
+The blank spaces around the loom carry labeled banner slots:
+
+| Slot | Where | Size |
+| --- | --- | --- |
+| Side rails | Left & right margins on screens ≥ 1420px wide | 160×600 |
+| Leaderboard | Under the control console | 728×90, fluid on phones |
+| Intro banner | Foot of the welcome modal | 468×60, fluid |
+| Win banner | Foot of the win modal | 468×60, fluid |
+
+Every slot reserves its space up front and is labeled "Advertisement", so nothing jumps when a creative loads. Until an ad network is connected, the slots show quiet house placeholders and make **zero third-party requests** — the game stays tracker-free and works offline.
+
+To switch on Google AdSense:
+
+1. Set `ADSENSE_CLIENT` (your `ca-pub-…` id) and the per-slot unit ids at the top of `ads.js`.
+2. Uncomment the record in `ads.txt` and put the same publisher id in it.
+3. Redeploy — the AdSense loader is injected only once the client id is set.
+
+Any other network works the same way: mount your tags into the `[data-ad-slot]` containers from `ads.js`. Don't want a slot? Delete its container in `index.html` — nothing else references it.
+
 ## Future Roadmap
 
 - Premium packs: historical textiles (Kente, Kasuri, Tartan…)
