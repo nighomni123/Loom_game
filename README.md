@@ -38,13 +38,15 @@ It's a genuine 2D constraint puzzle that quietly teaches the "see the repeat" in
 
 ## Features
 
-- **Hand-tuned difficulty curve** — 10 named patterns (Tabby → Jacquard) with growing repeats and dye counts, then endless mode.
-- **Pattern Library** — browse all levels from the intro or the ▦ button: live cloth previews, lock/unlock progression, earned stars, and best time/moves per level. Jump straight to any unlocked pattern.
+- **Hand-tuned difficulty curve** — 10 named patterns (Tabby → Jacquard) with growing repeats and dye counts.
+- **Endless patterns, proven fair** — every level past the named ten is sampled by a seeded generator and kept only if a built-in brute-force solver *proves* it has exactly one solution; each card is graded Gentle / Medium / Hard / Expert by the solver's minimum move count.
+- **Daily Weave** — one seeded puzzle per day (📅 in the header): the same cloth for everyone, everywhere. Finish it to get a Wordle-style emoji-grid result copied to your clipboard, ready to paste. Best stars/moves/time per day are saved.
+- **Pattern Library** — browse all levels from the intro or the ▦ button: live cloth previews, lock/unlock progression, earned stars, difficulty grades and best time/moves per level. Jump straight to any unlocked pattern.
 - **Star scoring** — finish under par moves for ★★★; best stars, times and move counts are saved per level.
 - **Hints** — 3 per level; a hint names the exact thread and dye to try, and lights the crossing.
 - **Undo** — full history, including repeat changes (<kbd>Z</kbd>).
 - **Timer & move counter** in the HUD.
-- **Progress saving** — level, sound preference and best stats persist in `localStorage`.
+- **Progress saving** — level, sound preference, best stats and daily records persist in `localStorage`.
 - **Polish** — woven cloth texture, wooden loom frame, thread-scrap confetti, gentle WebAudio chimes, keyboard shortcuts, reduced-motion support.
 - **Mobile-ready** — fluid layout that fits any phone width, big touch targets, long-press to cycle backward/weft (with haptic feedback), and safe-area support for notched screens.
 
@@ -57,6 +59,7 @@ It's a genuine 2D constraint puzzle that quietly teaches the "see the repeat" in
 | Undo | <kbd>Z</kbd> or Undo button |
 | Hint | <kbd>H</kbd> or Hint button |
 | Pattern Library | ▦ button (header) or "Browse patterns" |
+| Daily Weave | 📅 button (header) or "Daily weave" |
 | Sound on/off | 🔊 button |
 
 ## Run It
@@ -100,4 +103,4 @@ Any other network works the same way: mount your tags into the `[data-ad-slot]` 
 
 - Premium packs: historical textiles (Kente, Kasuri, Tartan…)
 - A free-weave mode for designing your own cloth
-- Daily weave challenges with shareable patterns
+- Daily streak tracking and a shareable archive of past dailies

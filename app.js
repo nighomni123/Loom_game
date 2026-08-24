@@ -16,6 +16,7 @@ const HINTS_PER_LEVEL = 3;
 const UNDO_CAP = 200;
 const SAVE_KEY = 'loom.save.v3';
 const SAVE_KEY_LEGACY = 'loom.save.v2';
+const DAILY_KEY = 'loom.daily.v1';
 
 const DYES = [
     { name: 'Indigo', hex: '#3D5A80' },
@@ -67,6 +68,12 @@ const state = {
     undoStack: [],
     sound: true,
     best: {},
+    isDaily: false,
+    dailyKey: null,
+    dailyLabel: '',
+    dailyGrade: '',
+    dailyResults: {},
+    _shareText: null,
 };
 
 // ---------- DOM refs ----------
@@ -107,16 +114,170 @@ function dyeNameOf(hex) {
     return dye ? dye.name : 'that shade';
 }
 
-// ---------- Level generation ----------
+// ---------- Solver ----------
+// Brute-force proof engine. The warp×weft×repeat space is tiny, so we can
+// enumerate EVERY (warp repeat w, weft repeat h, warp seq, weft seq) that
+// reproduces a target cloth and prove whether the puzzle has exactly one
+// solution — plus the minimum number of moves a perfect player needs.
+//
+// Pure functions only: no state, no DOM. Used by the endless generator
+// (uniqueness filter + difficulty grading), the Daily Weave, and verify.js.
 
-function levelSpec(n) {
-    if (n <= LEVELS.length) return { ...LEVELS[n - 1] };
-    // Deterministic for endless levels so previews/stats are stable.
-    const rng = mulberry32((n * 40503) >>> 0);
-    const w = 3 + Math.floor(rng() * 2);
-    const h = 3 + Math.floor(rng() * 2);
-    return { w, h, dyes: 5, name: ENDLESS_NAMES[(n - 1) % ENDLESS_NAMES.length] };
+// CYCLE_DIST[a] = clicks to take dye index `a` from Cream (the loom's resting
+// dye), allowing Shift-clicks (cheapest direction around the 5-cycle).
+const CYCLE_DIST = (() => {
+    const creamIdx = DYES.length - 1;
+    return DYES.map((_, i) => {
+        const fwd = ((i - creamIdx) % DYES.length + DYES.length) % DYES.length;
+        return Math.min(fwd, DYES.length - fwd);
+    });
+})();
+
+// BLEND_WARP_MASK[a][colorHex] = bitmask of weft dyes b with mix(a, b) === color.
+// Lets the solver kill whole warp prefixes the moment any weft slot empties.
+const BLEND_WARP_MASK = (() => {
+    return DYES.map(warpDye => {
+        const byColor = {};
+        DYES.forEach((weftDye, b) => {
+            const c = mix(warpDye.hex, weftDye.hex);
+            byColor[c] = (byColor[c] || 0) | (1 << b);
+        });
+        return byColor;
+    });
+})();
+
+// Smallest period p of a sequence such that the sequence is p-periodic.
+function minimalPeriod(seq) {
+    for (let p = 1; p <= seq.length; p++) {
+        let periodic = true;
+        for (let i = p; i < seq.length; i++) {
+            if (seq[i] !== seq[i - p]) { periodic = false; break; }
+        }
+        if (periodic) return p;
+    }
+    return seq.length;
 }
+
+// The weave rule as a pure cloth builder: hex dye sequences → ROWS×COLS cloth.
+function weaveCloth(warp, weft) {
+    return Array.from({ length: ROWS }, (_, y) =>
+        Array.from({ length: COLS }, (_, x) =>
+            mix(warp[x % warp.length], weft[y % weft.length])
+        )
+    );
+}
+
+function verifySolution(warp, weft, target) {
+    if (!Array.isArray(target) || target.length !== ROWS || target[0].length !== COLS) return false;
+    for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+            // Case-insensitive: hand-built targets may use uppercase hex.
+            if (mix(warp[x % warp.length], weft[y % weft.length]) !== String(target[y][x]).toLowerCase()) return false;
+        }
+    }
+    return true;
+}
+
+// Minimum moves for one solution: dye dips from Cream (cheapest direction per
+// thread) plus repeat-discovery slack, mirroring parMoves().
+function solutionMoveCost(warpIdx, weftIdx) {
+    let dips = 0;
+    for (const a of warpIdx) dips += CYCLE_DIST[a];
+    for (const b of weftIdx) dips += CYCLE_DIST[b];
+    return dips + warpIdx.length + weftIdx.length;
+}
+
+// Solve a target cloth exhaustively. Returns every DISTINCT solution,
+// canonicalised: each sequence collapsed to its minimal period (a [A,B,A,B]
+// warp is really [A,B]), and duplicate (sequence-identical) solutions deduped.
+// Two structurally different solutions that happen to blend to the same cloth
+// are counted separately — which only ever makes the uniqueness verdict more
+// conservative, never wrong.
+function solvePuzzle(target) {
+    const N = DYES.length;
+    const solutions = [];
+    const seen = new Set();
+    let hypotheses = 0;
+
+    for (let w = 1; w <= MAX_REPEAT; w++) {
+        for (let h = 1; h <= MAX_REPEAT; h++) {
+            // 1) Every cell in a (x%w, y%h) residue class must agree on one
+            //    color, otherwise this repeat shape is impossible. Colors are
+            //    lowercased so hand-built targets (any hex case) work too —
+            //    mix() always emits lowercase.
+            const B = Array.from({ length: w }, () => new Array(h).fill(null));
+            let feasible = true;
+            for (let y = 0; y < ROWS && feasible; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    const c = String(target[y][x]).toLowerCase();
+                    const i = x % w, j = y % h;
+                    if (B[i][j] === null) B[i][j] = c;
+                    else if (B[i][j] !== c) { feasible = false; break; }
+                }
+            }
+            if (!feasible) continue;
+            hypotheses++;
+
+            // 2) Enumerate warp dyes slot by slot; keep, per weft slot, the
+            //    bitmask of weft dyes still compatible with the prefix. A slot
+            //    hitting zero kills the branch instantly.
+            const warpIdx = new Array(w).fill(0);
+            const FULL = (1 << N) - 1;
+
+            const emit = (masks) => {
+                const weftIdx = masks.map(m => {
+                    for (let b = 0; b < N; b++) if (m & (1 << b)) return b;
+                    return 0;
+                });
+                const pw = minimalPeriod(warpIdx);
+                const ph = minimalPeriod(weftIdx);
+                const rw = warpIdx.slice(0, pw);
+                const rf = weftIdx.slice(0, ph);
+                const key = pw + '|' + ph + '|' + rw.join(',') + '|' + rf.join(',');
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    solutions.push({
+                        w: pw, h: ph,
+                        warpIdx: rw, weftIdx: rf,
+                        warp: rw.map(i => DYES[i].hex),
+                        weft: rf.map(i => DYES[i].hex),
+                        moves: solutionMoveCost(rw, rf),
+                    });
+                }
+            };
+
+            const walk = (i, masks) => {
+                if (i === w) { emit(masks); return; }
+                for (let a = 0; a < N; a++) {
+                    const row = B[i];
+                    const next = new Array(h);
+                    let viable = true;
+                    for (let j = 0; j < h; j++) {
+                        const m = masks[j] & (BLEND_WARP_MASK[a][row[j]] || 0);
+                        if (m === 0) { viable = false; break; }
+                        next[j] = m;
+                    }
+                    if (!viable) continue;
+                    warpIdx[i] = a;
+                    walk(i + 1, next);
+                }
+            };
+            walk(0, new Array(h).fill(FULL));
+        }
+    }
+
+    solutions.sort((a, b) => a.moves - b.moves);
+    return {
+        count: solutions.length,
+        unique: solutions.length === 1,
+        solutions,
+        best: solutions[0] || null,
+        minMoves: solutions.length ? solutions[0].moves : null,
+        hypotheses,
+    };
+}
+
+// ---------- Level generation ----------
 
 // Deterministic PRNG (mulberry32) so a given level + seed always yields the
 // same pattern. This lets the level-select screen show real previews and
@@ -146,38 +307,37 @@ function distinctCount(colors) {
 
 // Pure: compute the hidden solution + target cloth for a level, without
 // touching game state. Deterministic per (level, variation). Used both by
-// generateLevel() and by the level-select previews.
+// generateLevel() and by the level-select previews. The first ten levels are
+// hand-tuned; everything past them comes from the seeded endless generator,
+// which only ever emits boards the solver has PROVED uniquely solvable.
 function solveLevel(n, variation = 0) {
-    const spec = levelSpec(n);
-    const rng = mulberry32(levelSeed(n, variation));
+    if (n <= LEVELS.length) {
+        const spec = { ...LEVELS[n - 1] };
+        const rng = mulberry32(levelSeed(n, variation));
 
-    let warp = null;
-    let weft = null;
-    // Reroll until the cloth is non-trivial (at least 3 visible shades,
-    // and the thread sequences themselves aren't monochrome).
-    for (let attempt = 0; attempt < 40; attempt++) {
-        const w = randomSeq(spec.w, spec.dyes, rng);
-        const f = randomSeq(spec.h, spec.dyes, rng);
-        const shades = new Set();
-        for (let y = 0; y < spec.h; y++) {
-            for (let x = 0; x < spec.w; x++) shades.add(mix(w[x], f[y]));
+        let warp = null;
+        let weft = null;
+        // Reroll until the cloth is non-trivial (at least 3 visible shades,
+        // and the thread sequences themselves aren't monochrome).
+        for (let attempt = 0; attempt < 40; attempt++) {
+            const w = randomSeq(spec.w, spec.dyes, rng);
+            const f = randomSeq(spec.h, spec.dyes, rng);
+            const shades = new Set();
+            for (let y = 0; y < spec.h; y++) {
+                for (let x = 0; x < spec.w; x++) shades.add(mix(w[x], f[y]));
+            }
+            const interesting = shades.size >= Math.min(3, spec.w * spec.h) &&
+                (spec.w === 1 || distinctCount(w) >= 2 || distinctCount(f) >= 2);
+            if (interesting || attempt === 39) {
+                warp = w;
+                weft = f;
+                break;
+            }
         }
-        const interesting = shades.size >= Math.min(3, spec.w * spec.h) &&
-            (spec.w === 1 || distinctCount(w) >= 2 || distinctCount(f) >= 2);
-        if (interesting || attempt === 39) {
-            warp = w;
-            weft = f;
-            break;
-        }
+
+        return { spec, warp, weft, target: weaveCloth(warp, weft) };
     }
-
-    const target = Array.from({ length: ROWS }, (_, y) =>
-        Array.from({ length: COLS }, (_, x) =>
-            mix(warp[x % spec.w], weft[y % spec.h])
-        )
-    );
-
-    return { spec, warp, weft, target };
+    return getGeneratedLevel(n, variation);
 }
 
 function generateLevel(n, variation = 0) {
@@ -195,6 +355,11 @@ function generateLevel(n, variation = 0) {
     state.moves = 0;
     state.hintsLeft = HINTS_PER_LEVEL;
     state.undoStack = [];
+    state.isDaily = false;
+    state.dailyKey = null;
+    state._shareText = null;
+    if (el.winDaily) el.winDaily.hidden = true;
+    if (el.nextLevelBtn) el.nextLevelBtn.textContent = 'Next pattern →';
     resetTimer();
 
     // Player starts on a blank cream loom with a 1×1 repeat.
@@ -207,6 +372,124 @@ function generateLevel(n, variation = 0) {
     paint();
     saveGame();
 }
+
+// ---------- Endless generator ----------
+// Samples random warps/wefts/repeats/dye-counts from a seeded PRNG, keeps only
+// boards the solver has PROVED uniquely solvable, grades difficulty by the
+// solver's minimum move count, and feeds the Pattern Library as levels past
+// the 10 named ones. Fully deterministic per (level number, variation): no
+// Math.random anywhere on this path, so previews and stats stay stable.
+
+const GRADES = [
+    { maxMoves: 12, name: 'Gentle' },
+    { maxMoves: 18, name: 'Medium' },
+    { maxMoves: 24, name: 'Hard' },
+    { maxMoves: Infinity, name: 'Expert' },
+];
+
+function gradeIndexFor(moves) {
+    for (let i = 0; i < GRADES.length; i++) {
+        if (moves <= GRADES[i].maxMoves) return i;
+    }
+    return GRADES.length - 1;
+}
+
+// Repeat-size / dye-count windows sampled for each difficulty tier.
+const GEN_TIERS = [
+    { w: [2, 3], h: [2, 3], dyes: [3, 4] },
+    { w: [3, 4], h: [3, 4], dyes: [3, 5] },
+    { w: [4, 5], h: [4, 5], dyes: [4, 5] },
+    { w: [4, 6], h: [4, 6], dyes: [5, 5] },
+];
+
+// Difficulty ramp across endless levels: two levels per tier, then Expert.
+function endlessTierFor(n) {
+    return Math.min(GEN_TIERS.length - 1, Math.floor((n - LEVELS.length - 1) / 2));
+}
+
+const GENERATED_CACHE = new Map();
+
+function sampleBoard(rng, tierIndex) {
+    const t = GEN_TIERS[tierIndex];
+    const span = ([lo, hi]) => lo + Math.floor(rng() * (hi - lo + 1));
+    const w = span(t.w);
+    const h = span(t.h);
+    const dyes = span(t.dyes);
+    return { w, h, dyes, warp: randomSeq(w, dyes, rng), weft: randomSeq(h, dyes, rng) };
+}
+
+function boardIsInteresting(board) {
+    const shades = new Set();
+    for (let y = 0; y < board.h; y++) {
+        for (let x = 0; x < board.w; x++) shades.add(mix(board.warp[x], board.weft[y]));
+    }
+    return shades.size >= Math.min(3, board.w * board.h) &&
+        (board.w === 1 || distinctCount(board.warp) >= 2 || distinctCount(board.weft) >= 2);
+}
+
+function packGenerated(board, minMoves, name) {
+    const gradeIndex = gradeIndexFor(minMoves);
+    return {
+        spec: {
+            w: board.w,
+            h: board.h,
+            dyes: board.dyes,
+            name,
+            grade: GRADES[gradeIndex].name,
+            gradeIndex,
+            minMoves,
+        },
+        warp: board.warp,
+        weft: board.weft,
+        target: weaveCloth(board.warp, board.weft),
+    };
+}
+
+// Sample (seeded) until the solver proves a unique solution whose canonical
+// repeat matches the sampled repeat (no reducible boards — keeps par honest)
+// and whose grade hits the requested tier. Deterministic for a given rng seed.
+function sampleUniqueLevel(rng, tierIndex, name) {
+    let fallback = null;
+    for (let attempt = 0; attempt < 240; attempt++) {
+        const board = sampleBoard(rng, tierIndex);
+        if (!boardIsInteresting(board)) continue;
+        const result = solvePuzzle(weaveCloth(board.warp, board.weft));
+        if (!result.unique) continue;
+
+        const packed = packGenerated(board, result.minMoves, name);
+        if (fallback === null ||
+            Math.abs(packed.spec.gradeIndex - tierIndex) <
+            Math.abs(fallback.spec.gradeIndex - tierIndex)) {
+            fallback = packed;
+        }
+
+        const sol = result.solutions[0];
+        const irreducible = sol.w === board.w && sol.h === board.h;
+        if (packed.spec.gradeIndex === tierIndex && irreducible) return packed;
+        // Relax the grade-match requirement late in the loop so termination
+        // is guaranteed while still preferring on-tier boards.
+        if (attempt >= 160 && fallback && irreducible) return fallback;
+    }
+    if (fallback) return fallback;
+    // Statistically unreachable safety net: emit the last sample anyway.
+    const board = sampleBoard(rng, tierIndex);
+    const result = solvePuzzle(weaveCloth(board.warp, board.weft));
+    const moves = Number.isFinite(result.minMoves) ? result.minMoves : 99;
+    return packGenerated(board, moves, name);
+}
+
+// Cached entry point used by solveLevel() for everything past LEVELS.
+function getGeneratedLevel(n, variation) {
+    const key = n + '|' + variation;
+    if (GENERATED_CACHE.has(key)) return GENERATED_CACHE.get(key);
+    const rng = mulberry32(levelSeed(n, variation));
+    const name = ENDLESS_NAMES[(n - LEVELS.length - 1) % ENDLESS_NAMES.length];
+    const level = sampleUniqueLevel(rng, endlessTierFor(n), name);
+    if (GENERATED_CACHE.size > 256) GENERATED_CACHE.clear();
+    GENERATED_CACHE.set(key, level);
+    return level;
+}
+
 
 // ---------- Board construction ----------
 
@@ -307,8 +590,10 @@ function paint() {
     el.meterFill.parentElement.setAttribute('aria-valuenow', String(percent));
     el.matchPct.textContent = percent + '%';
     el.movesChip.textContent = `Moves ${state.moves}`;
-    el.levelChip.textContent = `Nº ${state.level} · ${state.name}`;
-    el.patternName.textContent = state.name;
+    el.levelChip.textContent = state.isDaily
+        ? `📅 Daily · ${state.dailyLabel}`
+        : `Nº ${state.level} · ${state.name}`;
+    el.patternName.textContent = state.isDaily ? 'Daily Weave' : state.name;
     el.warpVal.textContent = String(state.W);
     el.weftVal.textContent = String(state.H);
     el.hintCount.textContent = String(state.hintsLeft);
@@ -591,18 +876,34 @@ function triggerWin() {
     const time = state.startTime ? fmtTime(elapsedMs) : '0:00';
 
     if (!state.revealed) {
-        // Only record stats for the canonical (un-shuffled) pattern so
-        // times/moves stay comparable across plays of the same level.
-        if (state.variation === 0) {
-            const prev = state.best[state.level];
-            const prevStars = prev ? prev.stars : 0;
-            if (stars > prevStars) {
-                state.best[state.level] = { stars, time, moves: state.moves, ms: elapsedMs };
+        if (state.isDaily) {
+            // Daily: record the best result per date and prepare the
+            // Wordle-style shareable emoji grid.
+            recordDailyWin(stars, time, elapsedMs);
+            state._shareText = buildDailyShare(stars, time);
+            renderSharePreview();
+            el.winDaily.hidden = false;
+            el.nextLevelBtn.textContent = '↩ Back to patterns';
+            copyTextToClipboard(state._shareText, true);
+        } else {
+            // Only record stats for the canonical (un-shuffled) pattern so
+            // times/moves stay comparable across plays of the same level.
+            if (state.variation === 0) {
+                const prev = state.best[state.level];
+                const prevStars = prev ? prev.stars : 0;
+                if (stars > prevStars) {
+                    state.best[state.level] = { stars, time, moves: state.moves, ms: elapsedMs };
+                }
             }
+            el.winDaily.hidden = true;
+            el.nextLevelBtn.textContent = 'Next pattern →';
         }
         saveGame();
         startConfetti();
         winChime();
+    } else {
+        // A revealed board never earns a share card.
+        el.winDaily.hidden = true;
     }
 
     el.winTitle.textContent = state.revealed
@@ -769,6 +1070,206 @@ function bestStarsFor(level) {
     return b ? (b.stars || 0) : 0;
 }
 
+// ---------- Daily Weave ----------
+// One seeded puzzle per UTC calendar date: every player weaves the same cloth.
+// Finishing it produces a Wordle-style emoji-grid result that is copied to the
+// clipboard, and the best stats persist per day in localStorage.
+
+function todayKey() {
+    const d = new Date();
+    const pad = v => String(v).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
+function dailyLabelFor(key) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const [, m, d] = key.split('-').map(Number);
+    return `${months[m - 1]} ${d}`;
+}
+
+// Same date string → same seed → same puzzle for everyone, everywhere.
+function dailySeedFromDateKey(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    return (Math.imul(y * 372 + m * 31 + d, 2654435761) ^ 0x9E3779B9) >>> 0;
+}
+
+function generateDailyPuzzle(dateKey) {
+    const rng = mulberry32(dailySeedFromDateKey(dateKey));
+    const tier = Math.floor(rng() * GEN_TIERS.length);
+    return sampleUniqueLevel(rng, tier, 'Daily Weave');
+}
+
+function startDaily() {
+    stopConfetti();
+    el.introOverlay.hidden = true;
+    el.levelsOverlay.hidden = true;
+    el.winOverlay.hidden = true;
+    const key = todayKey();
+    const puzzle = generateDailyPuzzle(key);
+    state.isDaily = true;
+    state.dailyKey = key;
+    state.dailyLabel = dailyLabelFor(key);
+    state.dailyGrade = puzzle.spec.grade;
+    state.name = puzzle.spec.name;
+    state.solW = puzzle.spec.w;
+    state.solH = puzzle.spec.h;
+    state.solutionWarp = puzzle.warp;
+    state.solutionWeft = puzzle.weft;
+    state.target = puzzle.target;
+    state.revealed = false;
+    state.hasWon = false;
+    state.moves = 0;
+    state.hintsLeft = HINTS_PER_LEVEL;
+    state.undoStack = [];
+    state._shareText = null;
+    resetTimer();
+    // Player always starts on a blank cream loom with a 1×1 repeat.
+    state.W = 1;
+    state.H = 1;
+    state.warpSeq = [CREAM];
+    state.weftSeq = [CREAM];
+    el.winDaily.hidden = true;
+    el.nextLevelBtn.textContent = '↩ Back to patterns';
+    buildStrips();
+    paint();
+    const rec = dailyRecordFor(key);
+    toast(rec
+        ? `Daily Weave · ${state.dailyLabel} — today's best: ${rec.moves} moves · ${'★'.repeat(rec.stars || 0) || '☆'}`
+        : `Daily Weave · ${state.dailyLabel} · ${state.dailyGrade} — the same cloth for everyone today`);
+    blip(494, 0.09, 'sine', 0.05);
+}
+
+function loadDailyStore() {
+    try {
+        const raw = localStorage.getItem(DAILY_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) { return {}; }
+}
+
+function saveDailyStore() {
+    try { localStorage.setItem(DAILY_KEY, JSON.stringify(state.dailyResults)); } catch (e) { /* private mode */ }
+}
+
+function dailyRecordFor(key) {
+    return state.dailyResults[key] || null;
+}
+
+// Keep the BEST result per day: most stars, then fewest moves, then fastest.
+// Replays never lower a record.
+function recordDailyWin(stars, time, ms) {
+    const key = state.dailyKey;
+    const prev = state.dailyResults[key];
+    const prevMoves = prev && prev.moves != null ? prev.moves : Infinity;
+    const prevMs = prev && prev.ms != null ? prev.ms : Infinity;
+    const better = !prev || stars > prev.stars ||
+        (stars === prev.stars && (state.moves < prevMoves ||
+            (state.moves === prevMoves && ms < prevMs)));
+    state.dailyResults[key] = {
+        stars: Math.max(stars, prev ? (prev.stars || 0) : 0),
+        moves: better ? state.moves : prev.moves,
+        time: better ? time : prev.time,
+        ms: better ? ms : prev.ms,
+        grade: state.dailyGrade,
+        plays: ((prev && prev.plays) || 0) + 1,
+    };
+    saveDailyStore();
+}
+
+// --- Shareable result ---
+
+const SHARE_EMOJI = {
+    '#3D5A80': '🟦', // Indigo
+    '#C1440E': '🟥', // Madder
+    '#E0A32E': '🟨', // Ochre
+    '#7C8B6F': '🟩', // Sage
+    '#F2E8CF': '⬜', // Cream
+};
+
+const SHARE_COLS = 6;
+const SHARE_ROWS = 5;
+
+const nearestDyeCache = new Map();
+
+// Blended shades quantise to the closest dye so every cell maps to one emoji.
+function nearestDye(hex) {
+    if (nearestDyeCache.has(hex)) return nearestDyeCache.get(hex);
+    const [r, g, b] = hexToRgb(hex);
+    let best = DYES[0];
+    let bestDist = Infinity;
+    for (const dye of DYES) {
+        const [r2, g2, b2] = hexToRgb(dye.hex);
+        const dist = (r - r2) * (r - r2) + (g - g2) * (g - g2) + (b - b2) * (b - b2);
+        if (dist < bestDist) { bestDist = dist; best = dye; }
+    }
+    nearestDyeCache.set(hex, best);
+    return best;
+}
+
+function dailyEmojiRows() {
+    const rows = [];
+    for (let py = 0; py < SHARE_ROWS; py++) {
+        let row = '';
+        for (let px = 0; px < SHARE_COLS; px++) {
+            const sx = Math.floor(px * COLS / SHARE_COLS);
+            const sy = Math.floor(py * ROWS / SHARE_ROWS);
+            row += SHARE_EMOJI[nearestDye(state.target[sy][sx]).hex] || '⬜';
+        }
+        rows.push(row);
+    }
+    return rows;
+}
+
+function buildDailyShare(stars, time) {
+    return [
+        `LOOM Daily · ${state.dailyLabel} · ${state.dailyGrade}`,
+        ...dailyEmojiRows(),
+        `${state.moves} moves · ${time} · ${stars}/3 ★`,
+    ].join('\n');
+}
+
+function renderSharePreview() {
+    el.shareGrid.innerHTML = '';
+    for (let py = 0; py < SHARE_ROWS; py++) {
+        for (let px = 0; px < SHARE_COLS; px++) {
+            const sx = Math.floor(px * COLS / SHARE_COLS);
+            const sy = Math.floor(py * ROWS / SHARE_ROWS);
+            const cell = document.createElement('span');
+            cell.className = 'share-cell';
+            cell.style.backgroundColor = state.target[sy][sx];
+            el.shareGrid.appendChild(cell);
+        }
+    }
+}
+
+function copyTextToClipboard(text, announce) {
+    const tell = msg => { if (announce) toast(msg); };
+    const fallback = () => {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            tell(ok ? '📋 Daily result copied to clipboard' : 'Copy blocked — share your stars instead');
+        } catch (e) { tell('Copy blocked — share your stars instead'); }
+    };
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(
+                () => tell('📋 Daily result copied to clipboard'),
+                fallback
+            );
+        } else {
+            fallback();
+        }
+    } catch (e) { fallback(); }
+}
+
 // ---------- Level select (Pattern Library) ----------
 
 // How many level cards to show. Includes the 10 hand-tuned levels plus a
@@ -821,6 +1322,14 @@ function renderLevelSelect() {
         name.className = 'level-name';
         name.textContent = solved.spec.name;
         meta.appendChild(name);
+
+        // Endless levels carry their solver-graded difficulty on the card.
+        if (solved.spec.grade) {
+            const grade = document.createElement('span');
+            grade.className = 'level-grade';
+            grade.textContent = solved.spec.grade;
+            meta.appendChild(grade);
+        }
 
         const starRow = document.createElement('span');
         starRow.className = 'level-stars';
@@ -881,6 +1390,10 @@ function wireControls() {
     el.undoBtn.addEventListener('click', undo);
     el.hintBtn.addEventListener('click', useHint);
     el.shuffleBtn.addEventListener('click', () => {
+        if (state.isDaily) {
+            toast('The Daily is the same cloth for everyone — no reshuffling.');
+            return;
+        }
         stopConfetti();
         el.winOverlay.hidden = true;
         // Deterministic levels need a variation offset to get fresh colors.
@@ -901,6 +1414,11 @@ function wireControls() {
     el.startBtn.addEventListener('click', () => {
         el.introOverlay.hidden = true;
         blip(440, 0.08, 'sine', 0.04);
+    });
+    el.dailyBtn.addEventListener('click', startDaily);
+    el.dailyIntroBtn.addEventListener('click', startDaily);
+    el.copyShareBtn.addEventListener('click', () => {
+        if (state._shareText) copyTextToClipboard(state._shareText, true);
     });
     el.helpBtn.addEventListener('click', () => {
         el.startBtn.textContent = 'Back to the loom';
@@ -931,12 +1449,18 @@ function wireControls() {
     el.nextLevelBtn.addEventListener('click', () => {
         el.winOverlay.hidden = true;
         stopConfetti();
-        generateLevel(state.level + 1);
+        if (state.isDaily) {
+            // Leave the daily and return to the pattern the player was on.
+            generateLevel(state.level, state.variation);
+        } else {
+            generateLevel(state.level + 1);
+        }
     });
     el.replayBtn.addEventListener('click', () => {
         el.winOverlay.hidden = true;
         stopConfetti();
-        generateLevel(state.level);
+        if (state.isDaily) startDaily();
+        else generateLevel(state.level);
     });
 
     window.addEventListener('keydown', (e) => {
@@ -971,6 +1495,8 @@ function cacheDom() {
         levelsBtn: 'levels-btn', levelsIntroBtn: 'levels-intro-btn',
         levelsOverlay: 'levels-overlay', levelsGrid: 'levels-grid',
         levelsSummary: 'levels-summary', levelsCloseBtn: 'levels-close-btn',
+        dailyBtn: 'daily-btn', dailyIntroBtn: 'daily-intro-btn',
+        winDaily: 'win-daily', shareGrid: 'share-grid', copyShareBtn: 'copy-share-btn',
     };
     for (const [key, id] of Object.entries(ids)) el[key] = document.getElementById(id);
 }
@@ -981,10 +1507,15 @@ document.addEventListener('DOMContentLoaded', () => {
     buildFabric('playerGrid', playerCells);
     wireControls();
     loadGame();
+    state.dailyResults = loadDailyStore();
     el.soundBtn.textContent = state.sound ? '🔊' : '🔇';
     el.soundBtn.classList.toggle('muted', !state.sound);
     if (state.level > 1) {
         el.startBtn.textContent = `Continue · Pattern Nº ${state.level}`;
+    }
+    const todayRecord = dailyRecordFor(todayKey());
+    if (todayRecord) {
+        el.dailyIntroBtn.textContent = `Daily ✓ ${todayRecord.stars || 0}★`;
     }
     generateLevel(state.level);
 });

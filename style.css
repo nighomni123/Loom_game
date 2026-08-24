@@ -740,6 +740,52 @@ main {
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
 }
+.level-grade {
+  align-self: center;
+  font-size: .58rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .12rem .5rem;
+}
+
+/* ---------------- Daily weave ---------------- */
+
+#win-daily {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .75rem;
+  margin: 0 auto 1.3rem;
+  padding: 1rem 1.1rem .95rem;
+  max-width: 320px;
+  background: var(--paper);
+  border: 1px dashed #D6CBB4;
+  border-radius: var(--radius);
+}
+#win-daily[hidden] { display: none; }
+.share-title {
+  margin: 0;
+  font-size: .76rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+#share-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 18px);
+  gap: 3px;
+  justify-content: center;
+}
+.share-cell {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(46, 42, 36, .10);
+}
 
 /* ---------------- Confetti ---------------- */
 
@@ -925,6 +971,10 @@ main {
   .levels-modal { max-width: none; width: 100%; }
   .levels-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); max-height: none; }
   .levels-head h2 { font-size: 1.35rem; }
+
+  #share-grid { grid-template-columns: repeat(6, 15px); gap: 2px; }
+  .share-cell { width: 15px; height: 15px; }
+  #win-daily { max-width: none; }
 
   #toast { bottom: calc(18px + env(safe-area-inset-bottom)); font-size: .8rem; }
 }

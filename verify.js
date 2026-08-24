@@ -52,6 +52,8 @@ server.listen(PORT, async () => {
         check('level 2 card locked (fresh save)', await page.locator('.level-card[data-level="2"]').isDisabled());
         check('each card has a preview', (await page.locator('.level-preview').count()) === 16);
         check('summary shows star count', (await page.textContent('#levels-summary')).includes('★'));
+        check('intro has daily-weave button', await page.isVisible('#daily-intro-btn'));
+        check('endless cards show difficulty grades', (await page.locator('.level-card[data-level="11"] .level-grade').count()) === 1);
 
         // Jump straight to level 1 from the library (also dismisses the intro)
         await page.click('.level-card[data-level="1"]');
@@ -163,6 +165,139 @@ server.listen(PORT, async () => {
         await page.click('#levels-close-btn');
         await page.waitForTimeout(200);
         check('levels overlay closes via X', !(await page.isVisible('#levels-overlay')));
+
+        // ================= Solver: brute-force proofs =================
+        const solver = await page.evaluate(() => {
+            const planted = solveLevel(3, 0); // hand-tuned level
+            const result = solvePuzzle(planted.target);
+            return {
+                hasFns: typeof solvePuzzle === 'function' && typeof verifySolution === 'function' &&
+                    typeof weaveCloth === 'function',
+                unique: result.unique,
+                count: result.count,
+                minMoves: result.minMoves,
+                plantedVerifies: verifySolution(planted.warp, planted.weft, planted.target),
+                bestVerifies: result.best
+                    ? verifySolution(result.best.warp, result.best.weft, planted.target)
+                    : false,
+            };
+        });
+        check('solver functions exposed', solver.hasFns);
+        check('solver proves level 3 uniquely solvable', solver.unique === true && solver.count === 1,
+            `count=${solver.count}`);
+        check('solver computes a positive minimum move count', solver.minMoves > 0, String(solver.minMoves));
+        check('solver solution reproduces the cloth', solver.plantedVerifies && solver.bestVerifies);
+
+        // Ambiguity: a flat cloth of blend(Indigo, Madder) can be woven as
+        // warp=Indigo/weft=Madder OR warp=Madder/weft=Indigo — the solver must
+        // count both. An all-cream cloth collapses to ONE canonical solution.
+        const ambig = await page.evaluate(() => {
+            const flat = Array.from({ length: ROWS }, () => new Array(COLS).fill('#7f4f47'));
+            const flatCount = solvePuzzle(flat).count;
+            const cream = Array.from({ length: ROWS }, () => new Array(COLS).fill('#F2E8CF'));
+            const creamRes = solvePuzzle(cream);
+            const red = weaveCloth(['#3D5A80', '#C1440E', '#3D5A80', '#C1440E'], ['#F2E8CF']);
+            const rr = solvePuzzle(red);
+            return {
+                flatCount,
+                creamCount: creamRes.count, creamW: creamRes.best.w, creamH: creamRes.best.h,
+                w: rr.best.w, h: rr.best.h,
+            };
+        });
+        check('ambiguous flat cloth proved not unique', ambig.flatCount === 2, `count=${ambig.flatCount}`);
+        check('trivial cloth reduces to one canonical solution',
+            ambig.creamCount === 1 && ambig.creamW === 1 && ambig.creamH === 1,
+            `count=${ambig.creamCount}`);
+        check('solver collapses redundant repeat 4→2', ambig.w === 2 && ambig.h === 1,
+            `w=${ambig.w},h=${ambig.h}`);
+
+        // ================= Generator + Daily: determinism =================
+        const det = await page.evaluate(() => {
+            const solveTwice = JSON.stringify(solvePuzzle(solveLevel(5, 0).target)) ===
+                JSON.stringify(solvePuzzle(solveLevel(5, 0).target));
+            const dailySame = JSON.stringify(generateDailyPuzzle('2024-06-01')) ===
+                JSON.stringify(generateDailyPuzzle('2024-06-01'));
+            const dailyDiffers = JSON.stringify(generateDailyPuzzle('2024-06-01')) !==
+                JSON.stringify(generateDailyPuzzle('2024-06-02'));
+            const varied = JSON.stringify(solveLevel(13, 0)) !== JSON.stringify(solveLevel(13, 1));
+            return { solveTwice, dailySame, dailyDiffers, varied };
+        });
+        check('solver deterministic (same input → same output)', det.solveTwice);
+        check('generator deterministic per level+variation', det.varied);
+        check('daily deterministic per date', det.dailySame && det.dailyDiffers);
+
+        // Endless levels 11–16 must be unique-solvable, graded, in-bounds.
+        const gen = await page.evaluate(() => {
+            const out = [];
+            for (let n = 11; n <= 16; n++) {
+                const lv = solveLevel(n, 0);
+                const res = solvePuzzle(lv.target);
+                out.push({
+                    unique: res.unique,
+                    grade: lv.spec.grade || '',
+                    minMoves: res.minMoves,
+                    w: lv.spec.w, h: lv.spec.h,
+                });
+            }
+            return out;
+        });
+        check('levels 11–16 all uniquely solvable', gen.every(g => g.unique),
+            gen.map(g => g.unique ? '✓' : '✗').join(''));
+        check('generated levels carry difficulty grades',
+            gen.every(g => ['Gentle', 'Medium', 'Hard', 'Expert'].includes(g.grade)),
+            gen.map(g => g.grade).join(','));
+        check('generated repeats within player bounds (2–8)',
+            gen.every(g => g.w >= 2 && g.w <= 8 && g.h >= 2 && g.h <= 8),
+            gen.map(g => `${g.w}×${g.h}`).join(' '));
+
+        // Daily puzzle for today must also be solver-proven unique.
+        const todayPuzzle = await page.evaluate(() => {
+            const dp = generateDailyPuzzle(todayKey());
+            return { unique: solvePuzzle(dp.target).unique, grade: dp.spec.grade };
+        });
+        check("today's daily puzzle is uniquely solvable", todayPuzzle.unique, todayPuzzle.grade);
+
+        // ================= Daily Weave UI flow =================
+        check('daily button in HUD', await page.isVisible('#daily-btn'));
+        await page.click('#daily-btn');
+        await page.waitForTimeout(300);
+        check('level chip switches to Daily', (await page.textContent('#level-chip')).includes('Daily'));
+        check('daily board starts fresh at 0 moves', (await page.textContent('#moves-chip')).includes('Moves 0'));
+
+        // Instant-solve through the real win pipeline.
+        const won = await page.evaluate(() => {
+            state.W = state.solW;
+            state.H = state.solH;
+            state.warpSeq = [...state.solutionWarp];
+            state.weftSeq = [...state.solutionWeft];
+            paint();
+            return state.hasWon;
+        });
+        check('solving the daily triggers the win', won === true);
+        await page.waitForTimeout(1500);
+        check('win overlay appears for the daily', await page.isVisible('#win-overlay'));
+        check('share grid rendered (6×5 cells)', (await page.locator('#share-grid .share-cell').count()) === 30);
+        check('copy-result button offered', await page.isVisible('#copy-share-btn'));
+
+        const dailySave = await page.evaluate(() => ({
+            store: JSON.parse(localStorage.getItem('loom.daily.v1') || '{}'),
+            key: todayKey(),
+        }));
+        const todayEntry = dailySave.store[dailySave.key];
+        check('daily best persisted for today', !!(todayEntry && typeof todayEntry.moves === 'number'),
+            JSON.stringify(todayEntry || null));
+
+        await page.click('#copy-share-btn');
+        await page.waitForTimeout(300);
+        check('copy gives feedback toast', await page.isVisible('#toast.show'));
+
+        await page.click('#next-level-btn');
+        await page.waitForTimeout(300);
+        check('daily exit returns to campaign pattern', (await page.textContent('#level-chip')).includes('Nº 2'));
+        const campaign = await page.evaluate(() => ({ isDaily: state.isDaily, level: state.level }));
+        check('campaign state intact after the daily', campaign.isDaily === false && campaign.level === 2);
+        const campSave = await page.evaluate(() => JSON.parse(localStorage.getItem('loom.save.v3')));
+        check('campaign save untouched by the daily', campSave.level === 2);
 
         // --- Keyboard shortcuts ---
         await page.click('#warp-strip .thread:nth-child(1)');

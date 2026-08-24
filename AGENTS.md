@@ -28,9 +28,9 @@ Everything else (levels, hints, par) derives from this rule. The sample target i
 | --- | --- |
 | `index.html` | Single page: topbar HUD, sample swatch, loom frame (thread strips + player grid), control console, intro/win overlays, confetti canvas, toast, `[data-ad-slot]` containers inside a `.page-columns` wrapper. Loads `app.js` then `ads.js` at the end of `<body>`. |
 | `style.css` | All styling. Design tokens in `:root` custom properties. No CSS-in-JS; JS only sets inline `backgroundColor` and toggles classes. Ad-slot sizing lives in the `.ad-*` rules. |
-| `app.js` | Entire game logic (~750 lines, one file, no modules). `'use strict'`, IIFE-free top-level script. |
+| `app.js` | Entire game logic (~1,150 lines, one file, no modules). `'use strict'`, IIFE-free top-level script. Sections: constants/state/DOM/color helpers, **Solver**, level generation, **Endless generator**, board/paint/undo/interactions/hint/timer/win/sound/toast/persistence, **Daily Weave**, library/wiring. |
 | `capture.js` | Playwright script: serves the folder on port 3456 and saves `screenshots/{intro,gameplay,solved}.png`. |
-| `verify.js` | Playwright script: serves on port 3457 and runs ~33 automated checks (layout, counts, moves, undo, hint, reveal→win, level advance, persistence, keyboard, console errors). **Run this after any gameplay change.** |
+| `verify.js` | Playwright script: serves on port 3457 and runs ~96 automated checks (layout, counts, moves, undo, hint, reveal→win, level advance, persistence, keyboard, console errors, **solver proofs + uniqueness/ambiguity/reduction cases, generator & daily determinism, endless-level quality gates, Daily Weave UI flow incl. share grid + `loom.daily.v1` persistence**). **Run this after any gameplay change.** |
 | `ads.js` | Ad slots: fills every `[data-ad-slot]` container (footer leaderboard, intro/win banners, side rails ≥1420px). Renders house placeholders until `ADSENSE_CLIENT` is set at the top, then injects the AdSense loader once and mounts `<ins>` units. Isolated from `app.js`, all try/catch — ads must never break gameplay. |
 | `ads.txt` | Ad-network authorization file at the site root. Ships fully commented out; uncomment + insert the real pub id when AdSense is approved. |
 | `README.md` | Product narrative + how to play; references the three screenshots. |
@@ -58,15 +58,32 @@ Everything else (levels, hints, par) derives from this rule. The sample target i
 - The hidden solution uses `solW`/`solH` (from the level spec). The player may solve with *any* W/H that reproduces the cloth — only the cloth is checked.
 
 ### Levels
-- `LEVELS` table: 10 hand-tuned entries `{ w, h, dyes, name }` (Tabby → Jacquard), ramping repeat size and dye count. Beyond level 10, `levelSpec()` generates endless levels (3–4 repeats, 5 dyes, cycling names) — **deterministic per level number** (seeded PRNG).
-- **Levels are deterministic**: `solveLevel(n, variation)` is a pure function that computes the hidden solution + target cloth from a seeded PRNG (`mulberry32`, seed = `levelSeed(n, variation)`). Same level number → same pattern. This is what makes previews and stats meaningful.
-- `variation` (default 0) offsets the seed. The **Shuffle** button increments it for fresh colors on the same level; stats are only recorded for `variation === 0` (the canonical pattern).
-- `generateLevel(n, variation)` rerolls random sequences (up to 40 attempts) until the cloth is non-trivial: ≥ `min(3, w*h)` distinct shades and not both sequences monochrome.
+- `LEVELS` table: 10 hand-tuned entries `{ w, h, dyes, name }` (Tabby → Jacquard), ramping repeat size and dye count.
+- **Levels are deterministic**: `solveLevel(n, variation)` is a pure function that computes the hidden solution + target cloth from a seeded PRNG (`mulberry32`, seed = `levelSeed(n, variation)`). Same level number → same pattern. This is what makes previews and stats meaningful. For `n > LEVELS.length` it delegates to the endless generator (see below).
+- `variation` (default 0) offsets the seed. The **Shuffle** button increments it for fresh colors on the same level; stats are only recorded for `variation === 0` (the canonical pattern). Shuffle is refused while a Daily is active (the Daily must stay identical for everyone).
+- Hand-tuned levels reroll random sequences (up to 40 attempts) until the cloth is non-trivial: ≥ `min(3, w*h)` distinct shades and not both sequences monochrome.
 - Player always starts on an all-cream loom with a 1×1 repeat.
+
+### Solver (`solvePuzzle`)
+- Pure brute-force proof engine in `app.js`. For every repeat shape `(w, h)` in `1…MAX_REPEAT²`: first a residue-consistency test (all cells with the same `x%w, y%h` must share one color), then an exhaustive warp enumeration pruned by per-weft-slot candidate bitmasks built from `BLEND_WARP_MASK`.
+- Returns **every** distinct solution, canonicalised: each sequence collapsed to its minimal period (`[A,B,A,B]` → `[A,B]`) and duplicates deduped. `unique === true` ⇔ exactly one canonical solution reproduces the cloth. Note: `mix()` is symmetric, so a flat cloth of any off-diagonal blend has ≥2 solutions (warp/weft swap) — correctly reported as non-unique.
+- Each solution carries `moves` = dye dips from Cream (cheapest cycle direction per thread, `CYCLE_DIST`) **plus `w + h`** repeat-discovery slack — the same formula as `parMoves()`. Puzzle-level `minMoves` is the cheapest solution's count; `hypotheses` counts repeat shapes surviving step 1 (a decoy measure).
+- `weaveCloth(warp, weft)` and `verifySolution(warp, weft, target)` are the shared pure helpers (hex comparison is case-insensitive).
+
+### Endless generator
+- Levels past the 10 named ones are **sampled + solver-filtered**: `getGeneratedLevel(n, variation)` seeds `mulberry32(levelSeed(n, variation))`, samples random warps/wefts/repeats/dye-counts from tier windows (`GEN_TIERS`), rejects uninteresting boards, runs `solvePuzzle()`, and keeps a board only if it is **uniquely solvable**, *irreducible* (canonical repeat equals the sampled repeat), and lands on the requested difficulty tier. No `Math.random` anywhere on this path → fully deterministic per (level, variation); results memoised in `GENERATED_CACHE`.
+- Difficulty is graded by the solver's minimum move count (`GRADES`: ≤12 Gentle, ≤18 Medium, ≤24 Hard, else Expert). Endless levels ramp two-per-tier (`endlessTierFor`): 11–12 Gentle … 17+ Expert. The grade shows as a badge (`.level-grade`) on library cards.
+- The **Daily Weave** reuses the same sampler: `generateDailyPuzzle(dateKey)` seeds from the UTC date string so every player gets the identical puzzle.
+
+### Daily Weave
+- HUD **📅 button** or intro "Daily weave" button → `startDaily()` builds today's puzzle into the normal board (campaign `state.level` is untouched). Level chip shows `📅 Daily · Mon D`; Shuffle is disabled there.
+- On a genuine win (not Reveal): best result persists per date under `loom.daily.v1` — `{ [YYYY-MM-DD]: { stars, moves, time, ms, grade, plays } }`, keeping max stars, then fewest moves, then fastest time; replays never lower a record.
+- The win modal gains a share card: a 6×5 downsample of the cloth (`#share-grid`) plus "⧉ Copy result". A Wordle-style emoji grid (`buildDailyShare()`: title line, 5 rows of 🟦🟥🟨🟩⬜ via nearest-dye quantisation, stats line) is auto-copied to the clipboard on winning (`copyTextToClipboard`, with `execCommand` fallback; all failures degrade to a toast).
+- "↩ Back to patterns" exits to the saved campaign level; "Weave again" replays today's daily.
 
 ### Level select (Pattern Library)
 - Opened via the **▦ HUD button** or the **"Browse patterns"** button on the intro. Rendered by `renderLevelSelect()` into `#levels-grid`.
-- Shows `LIBRARY_COUNT` (16) cards: mini cloth preview (6×5 downsample of the target), level number, name, earned stars, and best time/moves if completed.
+- Shows `LIBRARY_COUNT` (16) cards: mini cloth preview (6×5 downsample of the target), level number, name, difficulty grade for generated levels (11+), earned stars, and best time/moves if completed.
 - **Unlock rule**: level `n` is unlocked if `n === 1`, or the previous level has ≥1 star, or `n ≤ state.level` (reached before). Locked cards are disabled and show 🔒.
 - Picking a card closes the library + intro, and calls `generateLevel(n, 0)`.
 - Header shows total stars collected (`#levels-summary`).
@@ -97,6 +114,7 @@ Everything else (levels, hints, par) derives from this rule. The sample target i
 ### Persistence
 - `localStorage` key **`loom.save.v3`** → `{ level, sound, best: { [level]: { stars, time, moves, ms } } }`. Saved on level generate, win, and sound toggle. Loaded on boot; intro button becomes "Continue · Pattern Nº N" if `level > 1`.
 - **Legacy migration**: `loadGame()` reads the old `loom.save.v2` key (where `best` was a plain star count) and migrates it to `v3` on first load.
+- **Daily key** **`loom.daily.v1`** → `{ [YYYY-MM-DD]: { stars, moves, time, ms, grade, plays } }`, one entry per UTC date, best result kept (see Daily Weave). Loaded at boot into `state.dailyResults`; if today's entry exists, the intro daily button shows `Daily ✓ N★`.
 - `bestStarsFor(level)` is the safe accessor for a level's star count (returns 0 if absent).
 
 ### Sound
@@ -112,12 +130,14 @@ Top-to-bottom sections, each marked with a banner comment:
 2. **State** — single mutable `state` object (no framework, no reactivity).
 3. **DOM refs** — `el` object filled by `cacheDom()` on `DOMContentLoaded`; `sampleCells` / `playerCells` are flat arrays of 120 cell elements (index `y * COLS + x`).
 4. **Color helpers** — `hexToRgb`, `rgbToHex`, `mix`, `dyeNameOf`.
-5. **Level generation** — `levelSpec`, `randomSeq`, `generateLevel`.
-6. **Board construction** — `buildFabric` (cells, once at boot), `buildStrips` (thread buttons, rebuilt whenever W/H changes).
-7. **Painting** — `paint()` is the **single render pass**: colors sample + player cells, toggles `matched`, paints thread tiles, updates every HUD element, and runs the win check. There is no virtual DOM; call `paint()` after any state change.
-8. **Undo / Interactions / Hint / Timer / Win / Confetti / Sound / Toast / Persistence / Wiring** — self-explanatory sections.
+5. **Solver** — `CYCLE_DIST`, `BLEND_WARP_MASK`, `minimalPeriod`, `weaveCloth`, `verifySolution`, `solvePuzzle` (pure, no DOM).
+6. **Level generation** — `mulberry32`, `levelSeed`, `randomSeq`, `solveLevel`, `generateLevel`.
+7. **Endless generator** — `GRADES`, `GEN_TIERS`, `endlessTierFor`, `sampleBoard`, `boardIsInteresting`, `packGenerated`, `sampleUniqueLevel`, `getGeneratedLevel`.
+8. **Board construction** — `buildFabric` (cells, once at boot), `buildStrips` (thread buttons, rebuilt whenever W/H changes).
+9. **Painting** — `paint()` is the **single render pass**: colors sample + player cells, toggles `matched`, paints thread tiles, updates every HUD element, and runs the win check. There is no virtual DOM; call `paint()` after any state change.
+10. **Undo / Interactions / Hint / Timer / Win / Confetti / Sound / Toast / Persistence / Daily Weave / Library / Wiring** — self-explanatory sections.
 
-Boot sequence (`DOMContentLoaded`): `cacheDom()` → `buildFabric()` ×2 → `wireControls()` → `loadGame()` → `generateLevel(state.level)`.
+Boot sequence (`DOMContentLoaded`): `cacheDom()` → `buildFabric()` ×2 → `wireControls()` → `loadGame()` (+ daily store) → `generateLevel(state.level)`.
 
 ### Invariants to respect when editing
 - `paint()` must stay idempotent and the only place that writes to the DOM from state.
@@ -169,7 +189,7 @@ node verify.js     # automated playthrough; must end with "ALL CHECKS PASSED"
 
 **Add a dye**: append `{ name, hex }` to `DYES`. Note: cycle distance (used by `parMoves()`) and all hint logic derive from array position automatically. Choose a hex whose midpoint blends with existing dyes stay distinguishable.
 
-**Change difficulty**: edit `LEVELS`, or the reroll criteria in `generateLevel()` (the `interesting` predicate), or star thresholds in `starsFor()`.
+**Change difficulty**: edit `LEVELS`, or the reroll criteria in `generateLevel()` (the `interesting` predicate), or star thresholds in `starsFor()`. For generated endless levels and the Daily, tune the sampling windows in `GEN_TIERS`, the move-count buckets in `GRADES`, and the ramp in `endlessTierFor()` — verify.js asserts levels 11–16 stay unique + graded, so rerun it.
 
 **Add a control/button**: add markup in `index.html`, style in `style.css`, then register the element id in `cacheDom()`'s `ids` map and wire it in `wireControls()`. If it mutates state, call `pushUndo()` first and `paint()` after.
 

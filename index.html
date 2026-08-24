@@ -33,6 +33,7 @@
             <div class="chip" id="moves-chip" title="Moves used">Moves 0</div>
             <div class="chip" id="time-chip" title="Time on this pattern">0:00</div>
             <button class="icon-btn" id="levels-btn" aria-label="Pattern library" title="Pattern library">▦</button>
+            <button class="icon-btn" id="daily-btn" aria-label="Daily weave" title="Daily weave — same puzzle for everyone today">📅</button>
             <button class="icon-btn" id="sound-btn" aria-label="Toggle sound">🔊</button>
             <button class="icon-btn" id="help-btn" aria-label="How to play">?</button>
         </div>
@@ -147,6 +148,7 @@
             <p class="fineprint">Fewer moves earn more stars. <kbd>Shift</kbd>-tap a thread to cycle backward — on touch screens, long-press instead.</p>
             <div class="modal-actions">
                 <button id="levels-intro-btn" class="btn ghost">Browse patterns</button>
+                <button id="daily-intro-btn" class="btn ghost">Daily weave</button>
                 <button id="start-btn" class="btn primary big">Start weaving</button>
             </div>
             <div class="ad-slot ad-inline" data-ad-slot="intro" aria-label="Advertisement"></div>
@@ -161,6 +163,11 @@
                 <div class="win-stat"><b id="win-time">0:00</b><span>Time</span></div>
                 <div class="win-stat"><b id="win-moves">0</b><span>Moves</span></div>
                 <div class="win-stat"><b id="win-par">0</b><span>Par</span></div>
+            </div>
+            <div id="win-daily" hidden>
+                <p class="share-title">The Daily is the same cloth for everyone — share your result:</p>
+                <div id="share-grid" aria-hidden="true"></div>
+                <button id="copy-share-btn" class="btn ghost">⧉ Copy result</button>
             </div>
             <div class="modal-actions">
                 <button id="replay-btn" class="btn ghost">Weave again</button>
