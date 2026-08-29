@@ -6,4 +6,4 @@
 #   2. Replace pub-0000000000000000 with your own publisher id —
 #      the same id you set as ADSENSE_CLIENT in ads.js.
 #
-# google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0
+google.com, pub-7505297407137499, DIRECT, f08c47fec0942fa0
