@@ -95,8 +95,7 @@ kbd {
 .brand-mark i:nth-child(2) { background: var(--madder); }
 .brand-mark i:nth-child(3) { background: var(--ochre); }
 .brand-mark i:nth-child(4) { background: var(--sage); }
-.brand-mark.big { width: 44px; height: 44px; gap: 4px; }
-.brand-mark.big i { border-radius: 6px; }
+
 
 .brand-text h1 {
   margin: 0;
@@ -534,13 +533,14 @@ main {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.intro-brand { display: flex; align-items: center; justify-content: center; gap: .9rem; margin-bottom: .3rem; }
-.intro-brand h2 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 2.3rem;
-  font-weight: 700;
-  letter-spacing: .16em;
+/* Animated brand logo (logos/loom-looped.svg) on the intro splash */
+.intro-logo {
+  display: block;
+  width: min(320px, 80%);
+  height: auto;
+  margin: -.3rem auto .15rem;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
 }
 .tagline {
   margin: 0 0 1.6rem;
@@ -962,7 +962,7 @@ main {
     overflow-y: auto;
   }
   .intro-modal { align-self: center; }
-  .intro-brand h2 { font-size: 1.9rem; }
+  .intro-logo { width: min(260px, 86%); }
   .steps { grid-template-columns: 1fr; gap: .7rem; margin-bottom: 1rem; }
   .step { flex-direction: row; text-align: left; padding: .7rem .9rem; gap: .8rem; }
   .step svg { flex: none; width: 64px; height: 44px; }

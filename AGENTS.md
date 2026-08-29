@@ -35,6 +35,7 @@ Everything else (levels, hints, par) derives from this rule. The sample target i
 | `ads.txt` | Ad-network authorization file at the site root. Ships fully commented out; uncomment + insert the real pub id when AdSense is approved. |
 | `README.md` | Product narrative + how to play; references the three screenshots. |
 | `screenshots/*.png` | Real captures (2x device scale). Regenerate with `capture.js`. |
+| `logos/` | Brand assets. `loom-looped.svg` = animated logo shown on the intro splash (`.intro-logo` in `index.html`, wordmark included — keep the `<text>` block if editing it); `Loom-interactable.svg` = hover-interactive variant (unused in-app); `logo-banner.jpg` (2752×1536) = `og:image`/`twitter:image` link-preview image; `logo-banner-sm.jpg` (1376×768) = README header banner; `logo-180.png` = `apple-touch-icon`; `logo-1024.jpg` / `logo-2048.jpg` = square logo sources; `github-social-preview.png` (1280×640) = upload manually in GitHub repo Settings → Social preview. |
 | `Test_idea.md` | Original design brainstorm transcript. Historical only — do not treat as spec. |
 | `.gitignore` | Excludes `node_modules/`, `.pw-browsers/`, `.npm-cache/`, `.gh-config/`, `.DS_Store`. |
 

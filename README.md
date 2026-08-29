@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="logos/logo-banner-sm.jpg" alt="LOOM — a puzzle of warp and weft" width="688">
+</p>
+
 # LOOM
 
 A meditative puzzle of warp, weft and color. Find the hidden repeat and weave the cloth to match the sample.
+
+**Play it live:** [loom-game.vercel.app](https://loom-game.vercel.app/)
 
 ## Screenshots
 
@@ -98,6 +104,19 @@ To switch on Google AdSense:
 3. Redeploy — the AdSense loader is injected only once the client id is set.
 
 Any other network works the same way: mount your tags into the `[data-ad-slot]` containers from `ads.js`. Don't want a slot? Delete its container in `index.html` — nothing else references it.
+
+## Brand Assets
+
+All logos live in `logos/`:
+
+| File | Use |
+| --- | --- |
+| `loom-looped.svg` | Animated logo, shown on the intro splash in-app |
+| `logo-banner.jpg` (2752×1536) | Link-preview image (`og:image` / `twitter:image`) |
+| `logo-banner-sm.jpg` (1376×768) | This README's header banner |
+| `logo-180.png` | Apple touch icon (iOS home-screen) |
+| `logo-1024.jpg` / `logo-2048.jpg` | Square logo sources (app stores, avatars) |
+| `github-social-preview.png` (1280×640) | Upload in GitHub repo **Settings → Social preview** |
 
 ## Future Roadmap
 

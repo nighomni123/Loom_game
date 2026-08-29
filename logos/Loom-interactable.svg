@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="100%" height="100%">
+  <defs>
+    <!-- Background Paper Texture (subtle noise) -->
+    <filter id="noise">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="1 0 0 0 0, 0 1 0 0 0, 0 0 1 0 0, 0 0 0 0.05 0" />
+    </filter>
+
+    <!-- Drop Shadow for Tactile Hover -->
+    <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+
+    <!-- Weft Texture (Horizontal Lines) -->
+    <pattern id="pattern-hz" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M0,3 H8" stroke="rgba(0, 0, 0, 0.12)" stroke-width="1.5"/>
+      <path d="M0,7 H8" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.5"/>
+    </pattern>
+
+    <!-- Warp Texture (Vertical Lines) -->
+    <pattern id="pattern-vt" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M3,0 V8" stroke="rgba(0, 0, 0, 0.12)" stroke-width="1.5"/>
+      <path d="M7,0 V8" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1.5"/>
+    </pattern>
+
+    <style>
+      /* Background */
+      .bg { fill: #f5f3ee; }
+      
+      /* Typography */
+      .title {
+        font-family: "Georgia", serif;
+        font-size: 88px;
+        fill: #2c2a29;
+        font-weight: bold;
+        letter-spacing: 3px;
+        opacity: 0;
+        animation: fadeIn 1s ease-out 1s forwards;
+      }
+      .subtitle {
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 26px;
+        fill: #73706b;
+        letter-spacing: 0.5px;
+        opacity: 0;
+        animation: fadeIn 1s ease-out 1.3s forwards;
+      }
+
+      /* Base Box Styles */
+      .box {
+        width: 144px;
+        height: 144px;
+        rx: 24px;
+      }
+
+      /* Hover States for Tactile Feel */
+      .block-group {
+        cursor: pointer;
+        transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      .block-group:hover {
+        filter: url(#drop-shadow);
+      }
+      /* Individual transform origins for accurate scaling */
+      .tl:hover { transform: scale(1.05) translate(-5px, -5px); }
+      .tr:hover { transform: scale(1.05) translate(5px, -5px); }
+      .bl:hover { transform: scale(1.05) translate(-5px, 5px); }
+      .br:hover { transform: scale(1.05) translate(5px, 5px); }
+
+      /* Entry Animations (The "Warp and Weft" slide) */
+      .tl { animation: weftInLeft 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+      .tr { animation: warpInTop 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+      .bl { animation: warpInBottom 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+      .br { animation: weftInRight 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+      @keyframes weftInLeft {
+        0% { transform: translateX(-150px); opacity: 0; }
+        100% { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes weftInRight {
+        0% { transform: translateX(150px); opacity: 0; }
+        100% { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes warpInTop {
+        0% { transform: translateY(-150px); opacity: 0; }
+        100% { transform: translateY(0); opacity: 1; }
+      }
+      @keyframes warpInBottom {
+        0% { transform: translateY(150px); opacity: 0; }
+        100% { transform: translateY(0); opacity: 1; }
+      }
+      @keyframes fadeIn {
+        0% { opacity: 0; transform: translateY(10px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect class="bg" width="800" height="800" />
+  <rect width="800" height="800" style="pointer-events: none;" filter="url(#noise)" opacity="0.6"/>
+
+  <!-- Logo Blocks Grid -->
+  <g id="logo-grid">
+    
+    <!-- Top Left: Blue (Weft / Horizontal) -->
+    <g class="block-group tl">
+      <rect class="box" x="248" y="196" fill="#3f5c7c" />
+      <rect class="box" x="248" y="196" fill="url(#pattern-hz)" />
+    </g>
+
+    <!-- Top Right: Red (Warp / Vertical) -->
+    <g class="block-group tr">
+      <rect class="box" x="408" y="196" fill="#bd4625" />
+      <rect class="box" x="408" y="196" fill="url(#pattern-vt)" />
+    </g>
+
+    <!-- Bottom Left: Yellow (Warp / Vertical) -->
+    <g class="block-group bl">
+      <rect class="box" x="248" y="356" fill="#dca034" />
+      <rect class="box" x="248" y="356" fill="url(#pattern-vt)" />
+    </g>
+
+    <!-- Bottom Right: Green (Weft / Horizontal) -->
+    <g class="block-group br">
+      <rect class="box" x="408" y="356" fill="#889c83" />
+      <rect class="box" x="408" y="356" fill="url(#pattern-hz)" />
+    </g>
+
+  </g>
+
+  <!-- Text Section -->
+  <g text-anchor="middle">
+    <text x="400" y="600" class="title">LOOM</text>
+    <text x="400" y="640" class="subtitle">a puzzle of warp &amp; weft</text>
+  </g>
+
+</svg>

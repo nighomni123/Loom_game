@@ -12,7 +12,7 @@ const server = http.createServer((req, res) => {
     const urlPath = req.url.split('?')[0];
     const filePath = path.join(LOOM_DIR, urlPath === '/' ? 'index.html' : urlPath);
     const ext = path.extname(filePath);
-    const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript' };
+    const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml' };
     fs.readFile(filePath, (err, content) => {
         if (err) { res.writeHead(404); res.end('Not found'); }
         else { res.writeHead(200, { 'Content-Type': types[ext] || 'text/plain' }); res.end(content); }
@@ -42,6 +42,11 @@ server.listen(PORT, async () => {
         check('intro has 3 steps', (await page.locator('.step').count()) === 3);
         check('start button visible', await page.isVisible('#start-btn'));
         check('intro has browse-patterns button', await page.isVisible('#levels-intro-btn'));
+        const introLogo = page.locator('#intro-overlay .intro-logo');
+        check('intro shows the brand logo', (await introLogo.count()) === 1 && await introLogo.isVisible());
+        check('intro logo loaded (natural width > 0)', await introLogo.evaluate(img => img.naturalWidth > 0));
+        check('meta og:image points at banner', ((await page.getAttribute('meta[property="og:image"]', 'content')) || '').includes('logos/logo-banner.jpg'));
+        check('apple-touch-icon set', ((await page.getAttribute('link[rel="apple-touch-icon"]', 'href')) || '') === 'logos/logo-180.png');
 
         // --- Level select from intro ---
         await page.click('#levels-intro-btn');
